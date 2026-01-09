@@ -22,6 +22,17 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -41,6 +52,7 @@ import {
 } from "@/components/ui/table";
 import api from "@/lib/api";
 import { queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 const schema = z.object({
   username: z.string().min(1, "必須です").max(100, "100文字以内"),
@@ -83,7 +95,10 @@ function formatDate(dateString: string | null): string {
 export function UsersPage() {
   const [open, setOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState<number | null>(null);
+  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
+  const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
   const isEditMode = editingUserId !== null;
+  const { toast } = useToast();
 
   const form = useForm<UserFormValues>({
     resolver: zodResolver(schema),
@@ -127,6 +142,16 @@ export function UsersPage() {
       setOpen(false);
       setEditingUserId(null);
       queryClient.invalidateQueries({ queryKey: ["users"] });
+      toast({
+        title: "ユーザーを追加しました",
+      });
+    },
+    onError: () => {
+      toast({
+        variant: "destructive",
+        title: "追加に失敗しました",
+        description: "入力内容を確認してください",
+      });
     },
   });
 
@@ -156,6 +181,34 @@ export function UsersPage() {
       setOpen(false);
       setEditingUserId(null);
       queryClient.invalidateQueries({ queryKey: ["users"] });
+      toast({
+        title: "ユーザー情報を更新しました",
+      });
+    },
+    onError: () => {
+      toast({
+        variant: "destructive",
+        title: "更新に失敗しました",
+        description: "入力内容を確認してください",
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await api.delete(`/users/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      toast({
+        title: "ユーザーを削除しました",
+      });
+    },
+    onError: () => {
+      toast({
+        variant: "destructive",
+        title: "削除に失敗しました",
+      });
     },
   });
 
@@ -211,7 +264,7 @@ export function UsersPage() {
               新規追加
             </Button>
           </DrawerTrigger>
-          <DrawerContent className="h-[66vh]">
+          <DrawerContent className="h-[93vh]">
             <div className="mx-auto w-full max-w-2xl h-full overflow-y-auto">
               <DrawerHeader>
                 <DrawerTitle>{isEditMode ? "ユーザー編集" : "新規ユーザー追加"}</DrawerTitle>
@@ -287,7 +340,8 @@ export function UsersPage() {
                 </div>
                 <DrawerFooter>
                   <Button type="submit" disabled={isPending}>
-                    {isPending ? (isEditMode ? "更新中..." : "追加中...") : isEditMode ? "更新" : "追加"}
+                    {isPending && <Spinner className="mr-2 h-4 w-4" />}
+                    {isEditMode ? "更新" : "追加"}
                   </Button>
                   <DrawerClose asChild>
                     <Button variant="outline" type="button">
@@ -342,7 +396,13 @@ export function UsersPage() {
                           <Edit className="mr-2 h-4 w-4" />
                           <span>編集</span>
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={() => {
+                            setDeletingUserId(user.id);
+                            setDeleteConfirmationOpen(true);
+                          }}
+                        >
                           <Trash2 className="mr-2 h-4 w-4" />
                           <span>削除</span>
                         </DropdownMenuItem>
@@ -353,9 +413,39 @@ export function UsersPage() {
               ))}
             </TableBody>
           </Table>
-          {usersQuery.isLoading && <p className="mt-3 text-xs text-muted-foreground">読み込み中...</p>}
+
+          {usersQuery.isLoading && (
+            <div className="flex justify-center py-4">
+              <Spinner className="h-6 w-6 text-muted-foreground" />
+            </div>
+          )}
         </CardContent>
-      </Card>
-    </div>
+      </Card >
+
+      <AlertDialog open={deleteConfirmationOpen} onOpenChange={setDeleteConfirmationOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>本当に削除しますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              この操作は取り消せません。<br></br>このユーザーアカウントは完全に削除されます。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeletingUserId(null)}>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (deletingUserId) {
+                  deleteMutation.mutate(deletingUserId);
+                  setDeleteConfirmationOpen(false);
+                }
+              }}
+            >
+              削除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div >
   );
 }

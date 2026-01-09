@@ -1,16 +1,21 @@
 import { useAtom } from "jotai";
-import { Building2, ChevronDown, ChevronRight, LogOut, Settings, Users } from "lucide-react";
+import { Building2, ChevronDown, ChevronRight, LogOut, Settings, Users, GraduationCap, FileText, List, Sun, Moon, Laptop } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
-import { settingsMenuOpenAtom } from "@/state/ui";
+import { settingsMenuOpenAtom, trainingMenuOpenAtom } from "@/state/ui";
 import { tokenStorage } from "@/lib/auth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { useTheme } from "@/components/theme-provider";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import {
   Sidebar as ShadcnSidebar,
@@ -30,6 +35,8 @@ import {
 
 export function Sidebar() {
   const [settingsOpen, setSettingsOpen] = useAtom(settingsMenuOpenAtom);
+  const [trainingOpen, setTrainingOpen] = useAtom(trainingMenuOpenAtom);
+  const { setTheme } = useTheme();
   const { data: user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -65,28 +72,35 @@ export function Sidebar() {
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel className="flex items-center gap-2 text-xs">
-            <Settings className="h-4 w-4" />
-            <span>設定</span>
+            <GraduationCap className="h-4 w-4" />
+            <span>社内研修</span>
           </SidebarGroupLabel>
           <SidebarGroupAction
-            title="設定メニューを切り替え"
-            onClick={() => setSettingsOpen((open) => !open)}
+            title="社内研修メニューを切り替え"
+            onClick={() => setTrainingOpen((open) => !open)}
           >
-            {settingsOpen ? (
+            {trainingOpen ? (
               <ChevronDown className="h-4 w-4" />
             ) : (
               <ChevronRight className="h-4 w-4" />
             )}
           </SidebarGroupAction>
-          {settingsOpen && user?.role === 1 && (
+          {trainingOpen && (
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={isUsersActive} tooltip="ユーザー管理">
-                    <NavLink to="/settings/users">
-                      <Users className="h-4 w-4" />
-                      <span>ユーザー管理</span>
-                      <ChevronRight className="ml-auto h-4 w-4 opacity-70" />
+                  <SidebarMenuButton asChild isActive={location.pathname === "/training/templates"} tooltip="研修テンプレート">
+                    <NavLink to="/training/templates">
+                      <FileText className="h-4 w-4" />
+                      <span>研修テンプレート</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={location.pathname === "/training/list"} tooltip="研修一覧">
+                    <NavLink to="/training/list">
+                      <List className="h-4 w-4" />
+                      <span>研修一覧</span>
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -94,6 +108,39 @@ export function Sidebar() {
             </SidebarGroupContent>
           )}
         </SidebarGroup>
+        <SidebarSeparator className="my-2" />
+        {user?.role === 1 && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="flex items-center gap-2 text-xs">
+              <Settings className="h-4 w-4" />
+              <span>設定</span>
+            </SidebarGroupLabel>
+            <SidebarGroupAction
+              title="設定メニューを切り替え"
+              onClick={() => setSettingsOpen((open) => !open)}
+            >
+              {settingsOpen ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+            </SidebarGroupAction>
+            {settingsOpen && (
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild isActive={isUsersActive} tooltip="ユーザー管理">
+                      <NavLink to="/settings/users">
+                        <Users className="h-4 w-4" />
+                        <span>ユーザー管理</span>
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            )}
+          </SidebarGroup>
+        )}
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
@@ -112,6 +159,28 @@ export function Sidebar() {
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <Sun className="mr-2 h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+                    <Moon className="absolute mr-2 h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+                    <span>テーマ切り替え</span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuItem onClick={() => setTheme("light")}>
+                      <Sun className="mr-2 h-4 w-4" />
+                      <span>ライト</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setTheme("dark")}>
+                      <Moon className="mr-2 h-4 w-4" />
+                      <span>ダーク</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setTheme("system")}>
+                      <Laptop className="mr-2 h-4 w-4" />
+                      <span>システム</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout}>
                   <LogOut className="mr-2 h-4 w-4" />
                   <span>ログアウト</span>

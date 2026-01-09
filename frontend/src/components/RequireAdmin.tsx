@@ -1,16 +1,23 @@
 ﻿import type { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { Spinner } from "@/components/ui/spinner";
+
+import { Outlet } from "react-router-dom";
 
 type RequireAdminProps = {
-  children: ReactNode;
+  children?: ReactNode;
 };
 
 export function RequireAdmin({ children }: RequireAdminProps) {
   const { data: user, isLoading } = useAuth();
 
   if (isLoading) {
-    return <div className="p-6 text-sm text-muted-foreground">読み込み中...</div>;
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Spinner className="h-8 w-8 text-primary" />
+      </div>
+    );
   }
 
   if (!user) {
@@ -21,5 +28,5 @@ export function RequireAdmin({ children }: RequireAdminProps) {
     return <div className="p-6 text-sm text-destructive">権限がありません</div>;
   }
 
-  return <>{children}</>;
+  return children ? <>{children}</> : <Outlet />;
 }

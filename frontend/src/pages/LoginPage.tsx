@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label";
 import api from "@/lib/api";
 import { tokenStorage } from "@/lib/auth";
 import { queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { Spinner } from "@/components/ui/spinner";
 
 const schema = z.object({
   loginid: z.string().min(1, "ログインIDを入力してください"),
@@ -33,6 +35,7 @@ type LoginResponse = {
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -49,7 +52,18 @@ export function LoginPage() {
     onSuccess: (data) => {
       tokenStorage.set(data.access_token);
       queryClient.setQueryData(["me"], data.user);
-      navigate("/settings/users", { replace: true });
+      toast({
+        title: "ログインしました",
+        description: "ようこそ、" + data.user.username + "さん",
+      });
+      navigate("/home", { replace: true });
+    },
+    onError: () => {
+      toast({
+        variant: "destructive",
+        title: "ログイン失敗",
+        description: "ID またはパスワードが違います",
+      });
     },
   });
 
@@ -85,7 +99,14 @@ export function LoginPage() {
             {mutation.isError && <p className="text-sm text-destructive">ID またはパスワードが違います</p>}
 
             <Button className="w-full" type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? "ログイン中..." : "ログイン"}
+              {mutation.isPending ? (
+                <>
+                  <Spinner className="mr-2 h-4 w-4" />
+                  ログイン中...
+                </>
+              ) : (
+                "ログイン"
+              )}
             </Button>
           </form>
         </CardContent>

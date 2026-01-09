@@ -3,6 +3,8 @@
 公司內部系統（Frontend: React + TypeScript / Backend: Laravel / DB: Supabase Postgres）。
 本 README 用於統一開發規則、API 規約、環境與流程，請所有成員遵守。
 
+[English](./README.en.md) | [日本語 (Japanese)](./README.ja.md)
+
 > 建議新成員先閱讀：第 6 章啟動流程 + 第 7、8 章規則。
 
 ## 目錄
@@ -59,100 +61,100 @@
 | --- | --- |
 | Framework | React + TypeScript |
 | Build Tool | Vite |
-| 通信 | axios |
-| 状態管理（UI状態） | Jotai |
-| サーバー状態 / キャッシュ | TanStack Query |
-| フォーム管理 | React Hook Form |
-| バリデーション | Zod |
+| 通訊 | axios |
+| 狀態管理（UI狀態） | Jotai |
+| 伺服器狀態 / 快取 | TanStack Query |
+| 表單管理 | React Hook Form |
+| 驗證 | Zod |
 | CSS | Tailwind CSS |
-| UI コンポーネント | shadcn/ui |
-| テーブル | TanStack Table |
-| グラフ | Recharts |
-| デプロイ | Vercel |
-| 認証 | JWT（Bearer Token） |
+| UI 元件 | shadcn/ui |
+| 表格 | TanStack Table |
+| 圖表 | Recharts |
+| 部署 | Vercel |
+| 認證 | JWT（Bearer Token） |
 
-### 3.2 状態管理ルール
-#### 3.2.1 状態の責務分離（重要）
-状態は役割ごとに明確に分けること。
+### 3.2 狀態管理規則
+#### 3.2.1 狀態的職責分離（重要）
+狀態必須根據角色明確區分。
 
-| 種類 | 使用ライブラリ | 用途 |
+| 種類 | 使用函式庫 | 用途 |
 | --- | --- | --- |
-| UI状態 | Jotai | モーダル開閉、選択中ID、表示切替など |
-| サーバー状態 | TanStack Query | APIレスポンス、一覧データ、詳細データ |
-| フォーム入力 | React Hook Form | 入力中の値、エラー状態 |
+| UI 狀態 | Jotai | Modal 開關、選取中的 ID、顯示切換等 |
+| 伺服器狀態 | TanStack Query | API 回應、列表資料、詳細資料 |
+| 表單輸入 | React Hook Form | 輸入中的值、錯誤狀態 |
 
 禁止：
-- APIレスポンスを Jotai に保存する
-- フォームの値を useState で管理する
-- TanStack Query を「単なる state 管理」として使う
+- 將 API 回應儲存在 Jotai 中
+- 使用 useState 管理表單的值
+- 將 TanStack Query 僅作為「單純的 state 管理」使用
 
-### 3.3 通信（axios）規約
+### 3.3 通訊（axios）規約
 #### 3.3.1 axios 共通設定
-- axios は必ず共通インスタンスを使用
-- Base URL は `VITE_API_BASE_URL` から取得
-- 認証は Authorization Header に JWT を付与（`Authorization: Bearer <JWT>`）
+- 必須使用 axios 的共通實例
+- Base URL 從 `VITE_API_BASE_URL` 取得
+- 認證需在 Authorization Header 加上 JWT（`Authorization: Bearer <JWT>`）
 
-#### 3.3.2 レスポンス取り扱い
-- API レスポンスはそのまま UI に流さない
-- 必要に応じて変換（DTO的な役割）を挟む
+#### 3.3.2 回應處理
+- API 回應不要直接流向 UI
+- 必要時加入轉換層（類似 DTO 的角色）
 
-### 3.4 認証方式（JWT）
-#### 3.4.1 認証概要
-- Backend（Laravel）で JWT を発行
-- Frontend は JWT を保持し、API 通信時に付与
-- 認証必須 API は Backend 側で auth middleware を適用
+### 3.4 認證方式（JWT）
+#### 3.4.1 認證概要
+- Backend（Laravel）發行 JWT
+- Frontend 保存 JWT，並在 API 通訊時附加
+- 需認證的 API 在 Backend 側套用 auth middleware
 
-#### 3.4.2 JWT 保持ルール（重要）
-- 原則：HttpOnly Cookie 推奨
-- localStorage 使用時は以下を厳守：XSS 対策、token 直参照禁止（必ず axios interceptor 経由）
+#### 3.4.2 JWT 保存規則（重要）
+- 原則：建議使用 HttpOnly Cookie
+- 使用 localStorage 時嚴格遵守：XSS 對策、禁止直接參照 token（務必透過 axios interceptor）
 
-#### 3.4.3 フロント側責務
-- 未認証時は API を叩かない
-- 401 を受け取った場合はログアウト処理を行う
+#### 3.4.3 前端職責
+- 未認證時不呼叫 API
+- 收到 401 時執行登出處理
 
-### 3.5 フォーム設計ルール
+### 3.5 表單設計規則
 #### 3.5.1 使用方針
-- すべてのフォームは React Hook Form を使用
-- バリデーションは Zod に一本化
-- フロー：React Hook Form（入力管理） -> Zod（バリデーションスキーマ）
+- 所有表單皆使用 React Hook Form
+- 驗證統一使用 Zod
+- 流程：React Hook Form（輸入管理） -> Zod（驗證 Schema）
 
 #### 3.5.2 禁止事項
-- onChange + useState によるフォーム管理
-- バリデーションロジックの分散（if 文での個別チェック）
+- 使用 onChange + useState 管理表單
+- 分散驗證邏輯（在 if 文中個別檢查）
 
 ### 3.6 UI / CSS 規約
 #### 3.6.1 Tailwind CSS
-- 基本は Tailwind の utility class を使用
-- 共通スタイルは component 化する
-- 長すぎる class は cn() + 定数化を検討
+- 基本使用 Tailwind 的 utility class
+- 共通樣式元件化
+- 過長的 class 考慮使用 cn() + 常數化
 
 #### 3.6.2 shadcn/ui
-- 原則 shadcn/ui をベースに拡張
-- 独自 UI をゼロから作らない
-- デザイン統一を最優先
+- 原則上以 shadcn/ui 為基礎進行擴充
+- 不要從零開始製作獨自的 UI
+- 設計統一為最優先
 
-### 3.7 テーブル・グラフ
-#### 3.7.1 テーブル（TanStack Table）
-- 一覧表示は TanStack Table を使用
-- ページング・ソート・フィルタは Table 側で制御
-- API は「生データ提供」に徹する
+### 3.7 表格・圖表
+#### 3.7.1 表格（TanStack Table）
+- 列表顯示使用 TanStack Table
+- 分頁、排序、篩選由 Table 側控制
+- API 僅負責「提供原始資料」
 
-#### 3.7.2 グラフ（Recharts）
-- 集計処理は Backend or Selector 層
-- Component 内で複雑な計算は禁止
+#### 3.7.2 圖表（Recharts）
+- 統計處理在 Backend 或 Selector 層進行
+- 禁止在 Component 內進行複雜計算
 
-### 3.8 デプロイ（Vercel）
+### 3.8 部署（Vercel）
 #### 3.8.1 基本方針
-- main ブランチ -> Production
+- main branch -> Production
 - feature / PR -> Preview Deploy
-- 環境変数は Vercel 側で管理
+- 環境變數由 Vercel 側管理
 
-#### 3.8.2 環境変数例
+#### 3.8.2 環境變數例
 - `VITE_API_BASE_URL=https://api.example.com`
 
-### 3.9 重要な思想
-> 本プロジェクトでは「状態の責務分離」「技術の役割固定」「例外を作らない」ことを最優先とする。
-> 迷った場合は新しいやり方を増やさず、既存ルールに合わせること。
+### 3.9 重要思想
+> 本專案最優先考量「狀態的職責分離」、「技術的角色固定」、「不製造例外」。
+> 迷惘時不要增加新做法，請配合既有規則。
 
 ## 4. Repo 結構
 建議採 monorepo（同一個 repo 同時放前端與後端），範例如下：
@@ -378,6 +380,3 @@ GET /api/users?page=1&per_page=20&q=tanaka&sort=created_at&order=desc
 ### 14.3 Migration 失敗
 - 檢查 migration 順序與 FK
 - 檢查資料型別（uuid / bigint）
-
-
-

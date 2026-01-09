@@ -2,6 +2,7 @@
 import { Navigate, Outlet } from "react-router-dom";
 import { tokenStorage } from "@/lib/auth";
 import { useAuth } from "@/hooks/useAuth";
+import { Spinner } from "@/components/ui/spinner";
 
 export function RequireAuth() {
   const token = tokenStorage.get();
@@ -18,7 +19,11 @@ export function RequireAuth() {
   }
 
   if (isLoading) {
-    return <div className="p-6 text-sm text-muted-foreground">読み込み中...</div>;
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Spinner className="h-8 w-8 text-primary" />
+      </div>
+    );
   }
 
   if (!user) {

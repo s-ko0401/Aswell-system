@@ -41,13 +41,19 @@ const DrawerContent = React.forwardRef<
     <DrawerPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto flex-col rounded-t-[10px] border bg-background",
+        // 固定高度 96vh
+        // 中身は flex-1 + overflow でスクロール可能にする
+        "fixed inset-x-0 bottom-0 z-50 mt-0 flex flex-col rounded-t-[10px] border bg-background h-[96vh]",
         className
       )}
       {...props}
     >
       <div className="mx-auto mt-4 h-2 w-[100px] rounded-full bg-muted" />
-      {children}
+
+      {/* ここがスクロール領域 */}
+      <div className="flex-1 overflow-y-auto">
+        {children}
+      </div>
     </DrawerPrimitive.Content>
   </DrawerPortal>
 ))

@@ -19,12 +19,23 @@ class UserController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => collect($paginator->items())->map(fn (User $user) => $this->userPayload($user)),
+            'data' => collect($paginator->items())->map(fn(User $user) => $this->userPayload($user)),
             'meta' => [
                 'page' => $paginator->currentPage(),
                 'per_page' => $paginator->perPage(),
                 'total' => $paginator->total(),
             ],
+            'message' => '',
+        ]);
+    }
+
+    public function selection(): JsonResponse
+    {
+        $users = User::query()->orderBy('username')->get(['id', 'username']);
+
+        return response()->json([
+            'success' => true,
+            'data' => $users,
             'message' => '',
         ]);
     }
