@@ -25,6 +25,28 @@ class CompanyCalendarService
         $cached = $this->getCachedPayload($startAt, $endAt, $email);
         $shouldRefresh = $this->shouldRefresh($cached['last_updated_at'] ?? null);
 
+        if (app()->environment('local') &&
+            empty($cached['calendars']) &&
+            empty($cached['last_updated_at'])) {
+            $payload = $this->refreshCache($startAt, $endAt, $email, true);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'range' => [
+                        'start' => $startAt->toAtomString(),
+                        'end' => $endAt->toAtomString(),
+                    ],
+                    'calendars' => $payload['calendars'] ?? [],
+                    'errors' => $payload['errors'] ?? [],
+                    'status' => $payload['status'] ?? 'refreshing',
+                    'last_updated_at' => $payload['last_updated_at'] ?? null,
+                ],
+                'meta' => (object) [],
+                'message' => '',
+            ], $payload['status'] === 'fresh' ? 200 : 202);
+        }
+
         return response()->json([
             'success' => true,
             'data' => [
