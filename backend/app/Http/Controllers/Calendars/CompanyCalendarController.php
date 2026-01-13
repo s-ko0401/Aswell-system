@@ -27,4 +27,23 @@ class CompanyCalendarController extends Controller
     {
         return $this->companyCalendarService->refresh($request);
     }
+
+    public function refreshScheduler(Request $request): JsonResponse
+    {
+        $token = $request->header('X-CRON-TOKEN');
+        $expected = config('services.calendar_refresh.token');
+
+        if (!$expected || !is_string($token) || !hash_equals($expected, $token)) {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'UNAUTHORIZED',
+                    'message' => 'Unauthorized',
+                    'details' => (object) [],
+                ],
+            ], 401);
+        }
+
+        return $this->companyCalendarService->refresh($request);
+    }
 }

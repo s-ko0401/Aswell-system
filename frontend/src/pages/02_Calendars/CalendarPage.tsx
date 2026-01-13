@@ -130,7 +130,7 @@ export const CalendarPage: React.FC = () => {
         gcTime: 5 * 60_000,
         refetchOnWindowFocus: false,
         refetchInterval: (query) =>
-            query.state.data?.status === "refreshing" ? 5000 : false,
+            query.state.data?.status === "refreshing" ? 30000 : false,
     });
 
     const memberCalendarQuery = useQuery<CompanyCalendarResponse, Error>({

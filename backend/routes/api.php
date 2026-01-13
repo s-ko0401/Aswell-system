@@ -19,6 +19,8 @@ Route::get('/health', function () {
     ]);
 });
 
+Route::post('/calendars/company/refresh-scheduler', [CompanyCalendarController::class, 'refreshScheduler']);
+
 Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
 

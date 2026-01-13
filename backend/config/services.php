@@ -42,4 +42,8 @@ return [
         'tenant' => env('MICROSOFT_TENANT_ID'),
     ],
 
+    'calendar_refresh' => [
+        'token' => env('CALENDAR_REFRESH_TOKEN'),
+    ],
+
 ];

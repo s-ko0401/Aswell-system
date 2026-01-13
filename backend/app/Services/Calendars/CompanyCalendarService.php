@@ -2,7 +2,6 @@
 
 namespace App\Services\Calendars;
 
-use App\Jobs\Calendars\RefreshCompanyCalendarsJob;
 use App\Models\User;
 use App\Services\Calendars\GraphCalendarService;
 use Illuminate\Http\JsonResponse;
@@ -26,10 +25,6 @@ class CompanyCalendarService
         $cached = $this->getCachedPayload($startAt, $endAt, $email);
         $shouldRefresh = $this->shouldRefresh($cached['last_updated_at'] ?? null);
 
-        if ($shouldRefresh) {
-            $this->dispatchRefresh($startAt, $endAt, $email, true);
-        }
-
         return response()->json([
             'success' => true,
             'data' => [
@@ -50,9 +45,7 @@ class CompanyCalendarService
     public function refresh(Request $request): JsonResponse
     {
         [$startAt, $endAt, $email] = $this->resolveRangeAndEmail($request);
-        $cached = $this->getCachedPayload($startAt, $endAt, $email);
-
-        $this->dispatchRefresh($startAt, $endAt, $email, true);
+        $payload = $this->refreshCache($startAt, $endAt, $email, true);
 
         return response()->json([
             'success' => true,
@@ -61,14 +54,14 @@ class CompanyCalendarService
                     'start' => $startAt->toAtomString(),
                     'end' => $endAt->toAtomString(),
                 ],
-                'calendars' => $cached['calendars'] ?? [],
-                'errors' => $cached['errors'] ?? [],
-                'status' => 'refreshing',
-                'last_updated_at' => $cached['last_updated_at'] ?? null,
+                'calendars' => $payload['calendars'] ?? [],
+                'errors' => $payload['errors'] ?? [],
+                'status' => $payload['status'] ?? 'refreshing',
+                'last_updated_at' => $payload['last_updated_at'] ?? null,
             ],
             'meta' => (object) [],
             'message' => '',
-        ], 202);
+        ], $payload['status'] === 'fresh' ? 200 : 202);
     }
 
     public function showEvent(Request $request, string $eventId): JsonResponse
@@ -99,53 +92,70 @@ class CompanyCalendarService
         Carbon $endAt,
         ?string $email,
         bool $forceRefresh = false
-    ): void {
-        $users = $this->resolveUsers($email);
-
-        $result = $this->calendarService->getCalendarsForUsers(
-            $users,
-            $startAt,
-            $endAt,
-            $forceRefresh
-        );
-
-        $payload = [
-            'calendars' => $result['calendars'] ?? [],
-            'errors' => $result['errors'] ?? [],
-        ];
-
-        $cacheKey = $this->cacheKey($startAt, $endAt, $email);
-        $metaKey = $this->metaKey($startAt, $endAt, $email);
-
-        $existingPayload = Cache::get($cacheKey, []);
-        $existingMeta = Cache::get($metaKey, []);
-        $existingCalendars = $existingPayload['calendars'] ?? [];
-
-        $hasNewCalendars = !empty($payload['calendars']);
-        $hasExistingCalendars = !empty($existingCalendars);
-
-        if (!$hasNewCalendars && $hasExistingCalendars) {
-            $payload['calendars'] = $existingCalendars;
+    ): array {
+        $lockKey = $this->lockKey($startAt, $endAt, $email);
+        if (!Cache::add($lockKey, now()->toIso8601String(), now()->addSeconds(self::REFRESH_LOCK_TTL_SECONDS))) {
+            return array_merge(
+                $this->getCachedPayload($startAt, $endAt, $email),
+                ['status' => 'refreshing']
+            );
         }
 
-        $lastUpdatedAt =
-            (!$hasNewCalendars && $hasExistingCalendars)
-                ? ($existingMeta['last_updated_at'] ?? null)
-                : now()->toIso8601String();
+        $users = $this->resolveUsers($email);
 
-        Cache::put(
-            $cacheKey,
-            $payload,
-            now()->addSeconds(self::CACHE_TTL_SECONDS)
-        );
+        try {
+            $result = $this->calendarService->getCalendarsForUsers(
+                $users,
+                $startAt,
+                $endAt,
+                $forceRefresh
+            );
 
-        Cache::put(
-            $metaKey,
-            ['last_updated_at' => $lastUpdatedAt],
-            now()->addSeconds(self::CACHE_TTL_SECONDS)
-        );
+            $payload = [
+                'calendars' => $result['calendars'] ?? [],
+                'errors' => $result['errors'] ?? [],
+            ];
 
-        Cache::forget($this->lockKey($startAt, $endAt, $email));
+            $cacheKey = $this->cacheKey($startAt, $endAt, $email);
+            $metaKey = $this->metaKey($startAt, $endAt, $email);
+
+            $existingPayload = Cache::get($cacheKey, []);
+            $existingMeta = Cache::get($metaKey, []);
+            $existingCalendars = $existingPayload['calendars'] ?? [];
+
+            $hasNewCalendars = !empty($payload['calendars']);
+            $hasExistingCalendars = !empty($existingCalendars);
+
+            if (!$hasNewCalendars && $hasExistingCalendars) {
+                $payload['calendars'] = $existingCalendars;
+            }
+
+            $lastUpdatedAt =
+                (!$hasNewCalendars && $hasExistingCalendars)
+                    ? ($existingMeta['last_updated_at'] ?? null)
+                    : now()->toIso8601String();
+
+            Cache::put(
+                $cacheKey,
+                $payload,
+                now()->addSeconds(self::CACHE_TTL_SECONDS)
+            );
+
+            Cache::put(
+                $metaKey,
+                ['last_updated_at' => $lastUpdatedAt],
+                now()->addSeconds(self::CACHE_TTL_SECONDS)
+            );
+
+            return [
+                'calendars' => $payload['calendars'],
+                'errors' => $payload['errors'],
+                'last_updated_at' => $lastUpdatedAt,
+                'status' => 'fresh',
+            ];
+        } finally {
+            Cache::forget($lockKey);
+        }
     }
 
     /**
@@ -213,27 +223,6 @@ class CompanyCalendarService
 
         $lastUpdated = Carbon::parse($lastUpdatedAt);
         return $lastUpdated->diffInSeconds(now()) >= self::STALE_AFTER_SECONDS;
-    }
-
-    private function dispatchRefresh(
-        Carbon $startAt,
-        Carbon $endAt,
-        ?string $email,
-        bool $forceRefresh
-    ): void {
-        $lockKey = $this->lockKey($startAt, $endAt, $email);
-        if (Cache::has($lockKey)) {
-            return;
-        }
-
-        Cache::put($lockKey, now()->toIso8601String(), now()->addSeconds(self::REFRESH_LOCK_TTL_SECONDS));
-
-        RefreshCompanyCalendarsJob::dispatch(
-            $startAt->toIso8601String(),
-            $endAt->toIso8601String(),
-            $email,
-            $forceRefresh
-        );
     }
 
     private function cacheKey(Carbon $startAt, Carbon $endAt, ?string $email): string
