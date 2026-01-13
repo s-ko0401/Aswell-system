@@ -187,12 +187,13 @@ class CompanyCalendarService
     {
         $start = $request->input('start');
         $end = $request->input('end');
+        $timezone = config('app.timezone', 'UTC');
 
         $startAt = $start
-            ? Carbon::parse($start)
+            ? Carbon::parse($start)->setTimezone($timezone)
             : now()->startOfWeek(Carbon::MONDAY);
         $endAt = $end
-            ? Carbon::parse($end)
+            ? Carbon::parse($end)->setTimezone($timezone)
             : now()->endOfWeek(Carbon::SUNDAY);
 
         return [$startAt, $endAt, $request->input('email')];

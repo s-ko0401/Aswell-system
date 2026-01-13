@@ -71,6 +71,7 @@ export const CalendarPage: React.FC = () => {
     const [selectedMemberIds, setSelectedMemberIds] = React.useState<Set<string>>(new Set());
     const [memberSearch, setMemberSearch] = React.useState("");
     const shouldResetMemberSelection = React.useRef(true);
+    const lastAutoRefreshKey = React.useRef<string | null>(null);
     const [isMemberCalendarOpen, setIsMemberCalendarOpen] = React.useState(false);
     const [activeMember, setActiveMember] = React.useState<UserCalendar["user"] | null>(null);
     const [memberCalendarMonth, setMemberCalendarMonth] = React.useState(() => new Date());
@@ -123,11 +124,21 @@ export const CalendarPage: React.FC = () => {
         []
     );
 
+    const autoRefreshKey = React.useMemo(
+        () =>
+            `${fetchRange.start.toISOString()}-${fetchRange.end.toISOString()}`,
+        [fetchRange.end, fetchRange.start]
+    );
+
     const { data, isLoading, isError, error, isFetching } = useQuery<
         CompanyCalendarResponse,
         Error
     >({
-        queryKey: ["companyCalendar", fetchRange.start.toISOString()],
+        queryKey: [
+            "companyCalendar",
+            fetchRange.start.toISOString(),
+            fetchRange.end.toISOString(),
+        ],
         enabled: isLoggedIn,
         queryFn: () =>
             getCompanyCalendars({
@@ -191,6 +202,33 @@ export const CalendarPage: React.FC = () => {
             });
         },
     });
+
+    React.useEffect(() => {
+        if (!isLoggedIn) {
+            return;
+        }
+        if (refreshMutation.isPending) {
+            return;
+        }
+        if (data?.status !== "refreshing") {
+            return;
+        }
+        if (data?.last_updated_at) {
+            return;
+        }
+        if (lastAutoRefreshKey.current === autoRefreshKey) {
+            return;
+        }
+
+        lastAutoRefreshKey.current = autoRefreshKey;
+        refreshMutation.mutate();
+    }, [
+        autoRefreshKey,
+        data?.last_updated_at,
+        data?.status,
+        isLoggedIn,
+        refreshMutation,
+    ]);
 
     const calendars: UserCalendar[] = data?.calendars ?? [];
     const isBusy = isLoading || isFetching;
