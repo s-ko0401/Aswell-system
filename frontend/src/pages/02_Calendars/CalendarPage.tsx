@@ -72,6 +72,7 @@ export const CalendarPage: React.FC = () => {
     const [memberSearch, setMemberSearch] = React.useState("");
     const shouldResetMemberSelection = React.useRef(true);
     const lastAutoRefreshKey = React.useRef<string | null>(null);
+    const lastMemberAutoRefreshKey = React.useRef<string | null>(null);
     const [isMemberCalendarOpen, setIsMemberCalendarOpen] = React.useState(false);
     const [activeMember, setActiveMember] = React.useState<UserCalendar["user"] | null>(null);
     const [memberCalendarMonth, setMemberCalendarMonth] = React.useState(() => new Date());
@@ -157,6 +158,7 @@ export const CalendarPage: React.FC = () => {
             "memberCalendar",
             activeMember?.email,
             memberMonthRange.start.toISOString(),
+            memberMonthRange.end.toISOString(),
         ],
         enabled: Boolean(activeMember?.email) && isMemberCalendarOpen,
         queryFn: () =>
@@ -168,6 +170,8 @@ export const CalendarPage: React.FC = () => {
         staleTime: 60_000,
         gcTime: 5 * 60_000,
         refetchOnWindowFocus: false,
+        refetchInterval: (query) =>
+            query.state.data?.status === "refreshing" ? 30000 : false,
         placeholderData: (previousData) => previousData,
     });
 
@@ -203,6 +207,30 @@ export const CalendarPage: React.FC = () => {
         },
     });
 
+    const memberAutoRefreshKey = React.useMemo(
+        () =>
+            `${activeMember?.email ?? "none"}-${memberMonthRange.start.toISOString()}-${memberMonthRange.end.toISOString()}`,
+        [activeMember?.email, memberMonthRange.end, memberMonthRange.start]
+    );
+
+    const memberRefreshMutation = useMutation({
+        mutationFn: () => {
+            if (!activeMember?.email) {
+                return Promise.reject(new Error("Member email is missing"));
+            }
+            return refreshCompanyCalendars({
+                email: activeMember.email,
+                start: memberMonthRange.start.toISOString(),
+                end: memberMonthRange.end.toISOString(),
+            });
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({
+                queryKey: ["memberCalendar"],
+            });
+        },
+    });
+
     React.useEffect(() => {
         if (!isLoggedIn) {
             return;
@@ -230,6 +258,34 @@ export const CalendarPage: React.FC = () => {
         refreshMutation,
     ]);
 
+    React.useEffect(() => {
+        if (!activeMember?.email || !isMemberCalendarOpen) {
+            return;
+        }
+        if (memberRefreshMutation.isPending) {
+            return;
+        }
+        if (memberCalendarQuery.data?.status !== "refreshing") {
+            return;
+        }
+        if (memberCalendarQuery.data?.last_updated_at) {
+            return;
+        }
+        if (lastMemberAutoRefreshKey.current === memberAutoRefreshKey) {
+            return;
+        }
+
+        lastMemberAutoRefreshKey.current = memberAutoRefreshKey;
+        memberRefreshMutation.mutate();
+    }, [
+        activeMember?.email,
+        isMemberCalendarOpen,
+        memberAutoRefreshKey,
+        memberCalendarQuery.data?.last_updated_at,
+        memberCalendarQuery.data?.status,
+        memberRefreshMutation,
+    ]);
+
     const calendars: UserCalendar[] = data?.calendars ?? [];
     const isBusy = isLoading || isFetching;
     const isCalendarRefreshing =
@@ -237,7 +293,9 @@ export const CalendarPage: React.FC = () => {
     const memberEvents: CalendarEvent[] =
         memberCalendarQuery.data?.calendars?.[0]?.events ?? [];
     const isMemberCalendarBusy =
-        memberCalendarQuery.isLoading || memberCalendarQuery.isFetching;
+        memberCalendarQuery.isLoading ||
+        memberCalendarQuery.isFetching ||
+        memberRefreshMutation.isPending;
     const eventDetail = eventDetailQuery.data ?? activeEvent?.event;
     const isEventDetailLoading =
         eventDetailQuery.isLoading || eventDetailQuery.isFetching;
