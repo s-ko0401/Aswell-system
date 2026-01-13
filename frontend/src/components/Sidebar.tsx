@@ -1,9 +1,9 @@
 import { useAtom } from "jotai";
-import { Building2, ChevronDown, ChevronRight, LogOut, Settings, Users, GraduationCap, FileText, List, Sun, Moon, Laptop } from "lucide-react";
+import { Building2, ChevronDown, ChevronRight, LogOut, Settings, Users, GraduationCap, FileText, List, Sun, Moon, Laptop, Calendar } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
-import { settingsMenuOpenAtom, trainingMenuOpenAtom } from "@/state/ui";
+import { calendarMenuOpenAtom, settingsMenuOpenAtom, trainingMenuOpenAtom } from "@/state/ui";
 import { tokenStorage } from "@/lib/auth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useTheme } from "@/components/theme-provider";
@@ -36,6 +36,7 @@ import {
 export function Sidebar() {
   const [settingsOpen, setSettingsOpen] = useAtom(settingsMenuOpenAtom);
   const [trainingOpen, setTrainingOpen] = useAtom(trainingMenuOpenAtom);
+  const [calendarOpen, setCalendarOpen] = useAtom(calendarMenuOpenAtom);
   const { setTheme } = useTheme();
   const { data: user } = useAuth();
   const navigate = useNavigate();
@@ -101,6 +102,36 @@ export function Sidebar() {
                     <NavLink to="/training/list">
                       <List className="h-4 w-4" />
                       <span>研修一覧</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          )}
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel className="flex items-center gap-2 text-xs">
+            <Calendar className="h-4 w-4" />
+            <span>カレンダー</span>
+          </SidebarGroupLabel>
+          <SidebarGroupAction
+            title="カレンダーメニューを切り替え"
+            onClick={() => setCalendarOpen((open) => !open)}
+          >
+            {calendarOpen ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
+          </SidebarGroupAction>
+          {calendarOpen && (
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={location.pathname === "/calendars"} tooltip="カレンダー">
+                    <NavLink to="/calendars">
+                      <Calendar className="h-4 w-4" />
+                      <span>カレンダー</span>
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

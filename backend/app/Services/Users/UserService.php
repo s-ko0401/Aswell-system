@@ -1,21 +1,25 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Services\Users;
 
 use App\Http\Requests\Users\StoreUserRequest;
 use App\Http\Requests\Users\UpdateUserRequest;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 
-class UserController extends Controller
+class UserService
 {
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $perPage = (int) request()->query('per_page', 20);
+        $perPage = (int) $request->query('per_page', 20);
         $perPage = min(max($perPage, 1), 100);
 
-        $paginator = User::query()->orderBy('id')->paginate($perPage);
+        $paginator = User::query()
+            ->orderBy('role')
+            ->orderByDesc('created_at')
+            ->paginate($perPage);
 
         return response()->json([
             'success' => true,
@@ -88,7 +92,7 @@ class UserController extends Controller
             'success' => true,
             'data' => [],
             'message' => '',
-        ]); // 200 OK with body is safer for "Unified format" rule than 204
+        ]);
     }
 
     private function userPayload(User $user): array

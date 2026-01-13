@@ -1,10 +1,10 @@
-# Training Template Feature Architecture
+# 研修テンプレート機能のアーキテクチャ
 
-This document describes the architecture and logic flow for the "Training Template" feature, which manages a 3-layer hierarchical curriculum (Template -> Major Item -> Middle Item -> Minor Item).
+このドキュメントでは、3層の階層構造（テンプレート -> 大項目 -> 中項目 -> 小項目）を管理する「研修テンプレート」機能のアーキテクチャとロジックフローについて説明します。
 
-## 1. Database Schema
+## 1. データベーススキーマ
 
-The data is stored in 4 related tables with Cascade Delete enabled.
+データは、カスケード削除が有効な4つの関連テーブルに保存されます。
 
 ```mermaid
 erDiagram
@@ -42,58 +42,58 @@ erDiagram
     }
 ```
 
-## 2. Backend Logic (Laravel)
+## 2. バックエンドロジック (Laravel)
 
-### Controller: `TrainingTemplateController`
+### コントローラー: `TrainingTemplateController`
 
-- **Store (`POST /api/training-templates`)**:
-    - Receives a nested JSON structure.
-    - Wraps operations in a `DB::transaction`.
-    - Creates the root `TrainingTemplate`.
-    - Iterates through `major_items`, `middle_items`, and `minor_items` to create them sequentially.
+- **保存 (`POST /api/training-templates`)**:
+    - ネストされたJSON構造を受信します。
+    - 操作を `DB::transaction` でラップします。
+    - ルートとなる `TrainingTemplate` を作成します。
+    - `major_items`、`middle_items`、`minor_items` をループして順次作成します。
 
-- **Update (`PUT /api/training-templates/{id}`)**:
-    - Uses a **Sync Strategy** to handle updates.
-    - **Logic**:
-        1.  Fetch existing IDs for the current level (e.g., Major Items).
-        2.  Compare with IDs in the request payload.
-        3.  **Delete**: IDs present in DB but missing in Request.
-        4.  **Update**: IDs present in both.
-        5.  **Create**: Items in Request without an ID.
-    - This logic is applied recursively to Major, Middle, and Minor items.
+- **更新 (`PUT /api/training-templates/{id}`)**:
+    - 更新処理には **同期戦略 (Sync Strategy)** を使用します。
+    - **ロジック**:
+        1.  現在のレベル（例：大項目）の既存IDを取得します。
+        2.  リクエストペイロード内のIDと比較します。
+        3.  **削除**: DBには存在するがリクエストには存在しないID。
+        4.  **更新**: 両方に存在するID。
+        5.  **作成**: IDを持たないリクエスト内のアイテム。
+    - このロジックは大項目、中項目、小項目に再帰的に適用されます。
 
-## 3. Frontend Logic (React + TypeScript)
+## 3. フロントエンドロジック (React + TypeScript)
 
-### State Management
-- **TanStack Query**: Used for fetching lists (`useQuery`) and handling mutations (`useMutation` for create/update/delete).
-- **React Hook Form**: Manages the complex nested form state.
-- **Zod**: Handles schema validation.
+### 状態管理
+- **TanStack Query**: リストの取得 (`useQuery`) およびミューテーション（作成/更新/削除の `useMutation`）に使用されます。
+- **React Hook Form**: 複雑なネストされたフォーム状態を管理します。
+- **Zod**: スキーマバリデーションを処理します。
 
-### Component Structure
+### コンポーネント構造
 
 - **`TemplatesPage`**:
-    - Displays the list of templates.
-    - Handles "Delete" actions.
-    - Manages the `Sheet` (Drawer) state for the editor.
+    - テンプレートの一覧を表示します。
+    - 「削除」アクションを処理します。
+    - エディター用の `Sheet` (Drawer) 状態を管理します。
 
 - **`TemplateEditor`**:
-    - The core form component.
-    - Uses `useFieldArray` for dynamic list management.
-    - **Nested Structure**:
-        - `TemplateEditor` (Root Form)
-            - `MajorItemField` (Level 1)
-                - `MiddleItemField` (Level 2)
-                    - `MinorItemField` (Level 3)
+    - コアとなるフォームコンポーネントです。
+    - 動的なリスト管理に `useFieldArray` を使用します。
+    - **ネスト構造**:
+        - `TemplateEditor` (ルートフォーム)
+            - `MajorItemField` (レベル 1)
+                - `MiddleItemField` (レベル 2)
+                    - `MinorItemField` (レベル 3)
 
-### Data Flow
-1.  **Fetch**: `TemplatesPage` fetches data via `getTrainingTemplates`.
-2.  **Edit**: Clicking "Edit" opens `TemplateEditor` and populates the form with `form.reset(data)`.
-3.  **Submit**:
-    - `TemplateEditor` gathers form data.
-    - Auto-assigns `sort` order based on the array index.
-    - Calls `createTrainingTemplate` or `updateTrainingTemplate`.
-4.  **Sync**: On success, `queryClient.invalidateQueries` refreshes the list.
+### データフロー
+1.  **取得**: `TemplatesPage` が `getTrainingTemplates` を介してデータを取得します。
+2.  **編集**: 「編集」をクリックすると `TemplateEditor` が開き、`form.reset(data)` でフォームにデータが入力されます。
+3.  **送信**:
+    - `TemplateEditor` がフォームデータを収集します。
+    - 配列のインデックスに基づいて `sort` 順を自動割り当てします。
+    - `createTrainingTemplate` または `updateTrainingTemplate` を呼び出します。
+4.  **同期**: 成功時、`queryClient.invalidateQueries` がリストをリフレッシュします。
 
-## 4. Key Decisions
-- **Sync Strategy**: Chosen over "Delete All & Recreate" to preserve primary keys (IDs), which is important for future features like "Training Progress" that will reference these items.
-- **Drawer UI**: Used a wide Drawer for the editor to maintain context of the list view while offering enough space for the nested form.
+## 4. 主な決定事項
+- **同期戦略**: 「すべて削除して再作成」ではなく、プライマリーキー (ID) を維持するために採用されました。これは、将来的にこれらのアイテムを参照する「研修進捗」などの機能にとって重要です。
+- **Drawer UI**: リストビューのコンテキストを維持しつつ、ネストされたフォームに十分なスペースを確保するために、エディターには幅広の Drawer を使用しました。

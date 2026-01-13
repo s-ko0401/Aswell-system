@@ -1,15 +1,13 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Services\Trainings;
 
-use App\Models\Training;
 use App\Models\TrainingDailyReport;
-use App\Models\TrainingDailyReportEntry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
-class TrainingDailyReportController extends Controller
+class TrainingDailyReportService
 {
     public function index(string $trainingId): JsonResponse
     {

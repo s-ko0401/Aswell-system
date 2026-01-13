@@ -4,10 +4,22 @@
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "${BACKEND_PORT:-8000}:8080"
     volumes:
       - ./backend:/var/www/html
-    command: sh -c "composer install && php artisan serve --host=0.0.0.0 --port=8000"
+
+  queue:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    volumes:
+      - ./backend:/var/www/html
+    entrypoint:
+      - sh
+      - -c
+      - "composer install && php artisan queue:work --tries=1"
+    depends_on:
+      - backend
 
   frontend:
     build:
@@ -24,4 +36,3 @@
 
 volumes:
   frontend_node_modules:
-

@@ -1,9 +1,11 @@
 <?php
 
-use App\Http\Controllers\AuthController;
-use App\Http\Controllers\UserController;
-use App\Http\Controllers\TrainingTemplateController;
-use App\Http\Controllers\TrainingController;
+use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Calendars\CompanyCalendarController;
+use App\Http\Controllers\Trainings\TrainingController;
+use App\Http\Controllers\Trainings\TrainingDailyReportController;
+use App\Http\Controllers\Trainings\TrainingTemplateController;
+use App\Http\Controllers\Users\UserController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', function () {
@@ -35,14 +37,19 @@ Route::middleware('auth:api')->group(function () {
     Route::put('training-items/{id}/status', [TrainingController::class, 'updateItemStatus']);
 
     // Daily Reports
-    Route::get('trainings/{trainingId}/daily-reports', [\App\Http\Controllers\TrainingDailyReportController::class, 'index']);
-    Route::post('trainings/{trainingId}/daily-reports', [\App\Http\Controllers\TrainingDailyReportController::class, 'store']);
-    Route::get('daily-reports/{id}', [\App\Http\Controllers\TrainingDailyReportController::class, 'show']);
-    Route::put('daily-reports/{id}', [\App\Http\Controllers\TrainingDailyReportController::class, 'update']);
-    Route::delete('daily-reports/{id}', [\App\Http\Controllers\TrainingDailyReportController::class, 'destroy']);
+    Route::get('trainings/{trainingId}/daily-reports', [TrainingDailyReportController::class, 'index']);
+    Route::post('trainings/{trainingId}/daily-reports', [TrainingDailyReportController::class, 'store']);
+    Route::get('daily-reports/{id}', [TrainingDailyReportController::class, 'show']);
+    Route::put('daily-reports/{id}', [TrainingDailyReportController::class, 'update']);
+    Route::delete('daily-reports/{id}', [TrainingDailyReportController::class, 'destroy']);
 
     // User Selection
     Route::get('/users/selection', [UserController::class, 'selection']);
+
+    // Company Calendars
+    Route::get('/calendars/company', [CompanyCalendarController::class, 'index']);
+    Route::get('/calendars/company/events/{eventId}', [CompanyCalendarController::class, 'showEvent']);
+    Route::post('/calendars/company/refresh', [CompanyCalendarController::class, 'refresh']);
 });
 
 Route::middleware(['auth:api', 'admin'])->group(function () {

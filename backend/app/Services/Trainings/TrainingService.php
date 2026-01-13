@@ -1,15 +1,16 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Services\Trainings;
 
 use App\Models\Training;
+use App\Models\TrainingMinorItem;
 use App\Models\TrainingTemplate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
-class TrainingController extends Controller
+class TrainingService
 {
     public function index(): JsonResponse
     {
@@ -18,7 +19,7 @@ class TrainingController extends Controller
             'teacher',
             'trainee',
             'creator',
-            'majorItems.middleItems.minorItems'
+            'majorItems.middleItems.minorItems',
         ])
             ->orderBy('created_at', 'desc')
             ->paginate(10);
@@ -39,7 +40,6 @@ class TrainingController extends Controller
 
         try {
             return DB::transaction(function () use ($request) {
-                // 1. Create Training
                 $training = Training::create([
                     'name' => $request->name,
                     'training_template_id' => $request->training_template_id,
@@ -50,7 +50,6 @@ class TrainingController extends Controller
                     'created_by' => $request->user()->id,
                 ]);
 
-                // 2. Copy Template Structure if template_id is provided
                 if ($request->training_template_id) {
                     $template = TrainingTemplate::with('majorItems.middleItems.minorItems')
                         ->find($request->training_template_id);
@@ -95,7 +94,7 @@ class TrainingController extends Controller
             'teacher',
             'trainee',
             'creator',
-            'majorItems.middleItems.minorItems'
+            'majorItems.middleItems.minorItems',
         ])->findOrFail($id);
 
         return response()->json($training);
@@ -126,16 +125,13 @@ class TrainingController extends Controller
         return response()->json(['message' => 'Training deleted successfully']);
     }
 
-    /**
-     * Update status of a minor item
-     */
     public function updateItemStatus(Request $request, $itemId): JsonResponse
     {
         $request->validate([
             'status' => 'required|in:未着手,研修中,完了',
         ]);
 
-        $item = \App\Models\TrainingMinorItem::findOrFail($itemId);
+        $item = TrainingMinorItem::findOrFail($itemId);
         $item->update(['status' => $request->status]);
 
         return response()->json($item);

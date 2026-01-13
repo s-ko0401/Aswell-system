@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Services\Trainings;
 
 use App\Http\Requests\StoreTrainingTemplateRequest;
 use App\Http\Requests\UpdateTrainingTemplateRequest;
@@ -12,11 +12,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
-class TrainingTemplateController extends Controller
+class TrainingTemplateService
 {
-    /**
-     * Display a listing of the resource.
-     */
     public function index(): JsonResponse
     {
         $templates = TrainingTemplate::with(['creator', 'majorItems.middleItems.minorItems'])
@@ -26,21 +23,16 @@ class TrainingTemplateController extends Controller
         return response()->json($templates);
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
     public function store(StoreTrainingTemplateRequest $request): JsonResponse
     {
         try {
             DB::beginTransaction();
 
-            // 1. Create Template
             $template = TrainingTemplate::create([
                 'name' => $request->name,
                 'created_by' => $request->user()->id,
             ]);
 
-            // 2. Create Nested Items
             if ($request->has('major_items')) {
                 foreach ($request->major_items as $majorData) {
                     $majorItem = $template->majorItems()->create([
@@ -78,18 +70,12 @@ class TrainingTemplateController extends Controller
         }
     }
 
-    /**
-     * Display the specified resource.
-     */
     public function show(string $id): JsonResponse
     {
         $template = TrainingTemplate::with('majorItems.middleItems.minorItems')->findOrFail($id);
         return response()->json($template);
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
     public function update(UpdateTrainingTemplateRequest $request, string $id): JsonResponse
     {
         try {
@@ -98,7 +84,6 @@ class TrainingTemplateController extends Controller
             $template = TrainingTemplate::findOrFail($id);
             $template->update(['name' => $request->name]);
 
-            // Sync Major Items
             $this->syncMajorItems($template, $request->major_items ?? []);
 
             DB::commit();
@@ -111,50 +96,41 @@ class TrainingTemplateController extends Controller
         }
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
     public function destroy(string $id): JsonResponse
     {
         $template = TrainingTemplate::findOrFail($id);
-        $template->delete(); // Cascade delete handles children
+        $template->delete();
 
         return response()->json(['message' => 'Template deleted successfully']);
     }
 
-    // --- Helper Methods for Syncing ---
-
-    private function syncMajorItems(TrainingTemplate $template, array $itemsData)
+    private function syncMajorItems(TrainingTemplate $template, array $itemsData): void
     {
         $existingIds = $template->majorItems()->pluck('id')->toArray();
         $inputIds = array_filter(array_column($itemsData, 'id'));
 
-        // Delete missing
         $toDelete = array_diff($existingIds, $inputIds);
         TrainingTemplateMajorItem::destroy($toDelete);
 
         foreach ($itemsData as $data) {
             if (isset($data['id']) && in_array($data['id'], $existingIds)) {
-                // Update
                 $item = TrainingTemplateMajorItem::find($data['id']);
                 $item->update([
                     'name' => $data['name'],
                     'sort' => $data['sort'],
                 ]);
             } else {
-                // Create
                 $item = $template->majorItems()->create([
                     'name' => $data['name'],
                     'sort' => $data['sort'],
                 ]);
             }
 
-            // Sync Children
             $this->syncMiddleItems($item, $data['middle_items'] ?? []);
         }
     }
 
-    private function syncMiddleItems(TrainingTemplateMajorItem $majorItem, array $itemsData)
+    private function syncMiddleItems(TrainingTemplateMajorItem $majorItem, array $itemsData): void
     {
         $existingIds = $majorItem->middleItems()->pluck('id')->toArray();
         $inputIds = array_filter(array_column($itemsData, 'id'));
@@ -180,7 +156,7 @@ class TrainingTemplateController extends Controller
         }
     }
 
-    private function syncMinorItems(TrainingTemplateMiddleItem $middleItem, array $itemsData)
+    private function syncMinorItems(TrainingTemplateMiddleItem $middleItem, array $itemsData): void
     {
         $existingIds = $middleItem->minorItems()->pluck('id')->toArray();
         $inputIds = array_filter(array_column($itemsData, 'id'));

@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Services\Auth;
 
 use App\Http\Requests\Auth\LoginRequest;
 use Illuminate\Http\JsonResponse;
 
-class AuthController extends Controller
+class AuthService
 {
     public function login(LoginRequest $request): JsonResponse
     {

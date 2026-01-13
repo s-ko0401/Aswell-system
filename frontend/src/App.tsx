@@ -7,6 +7,7 @@ import { HomePage } from "./pages/HomePage";
 import { UsersPage } from "./pages/99_Setting/UsersPage";
 import { TemplatesPage } from "./pages/01_Training/01_TemplatesPage/TemplatesPage";
 import { TrainingListPage } from "./pages/01_Training/02_TrainingListPage/TrainingListPage";
+import { CalendarPage } from "./pages/02_Calendars/CalendarPage";
 import { Toaster } from "./components/ui/toaster";
 import { ThemeProvider } from "@/components/theme-provider";
 
@@ -20,6 +21,7 @@ function App() {
             <Route path="/home" element={<HomePage />} />
             <Route path="/training/templates" element={<TemplatesPage />} />
             <Route path="/training/list" element={<TrainingListPage />} />
+            <Route path="/calendars" element={<CalendarPage />} />
             <Route element={<RequireAdmin />}>
               <Route path="/settings/users" element={<UsersPage />} />
             </Route>

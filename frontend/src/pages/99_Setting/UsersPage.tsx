@@ -1,6 +1,6 @@
 ﻿import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 import { Edit, MoreVertical, Plus, Trash2 } from "lucide-react";
@@ -97,6 +97,8 @@ export function UsersPage() {
   const [editingUserId, setEditingUserId] = useState<number | null>(null);
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const perPage = 20;
   const isEditMode = editingUserId !== null;
   const { toast } = useToast();
 
@@ -112,9 +114,9 @@ export function UsersPage() {
   });
 
   const usersQuery = useQuery({
-    queryKey: ["users", 1],
+    queryKey: ["users", currentPage],
     queryFn: async () => {
-      const { data } = await api.get("/users", { params: { page: 1, per_page: 20 } });
+      const { data } = await api.get("/users", { params: { page: currentPage, per_page: perPage } });
       return {
         data: data.data as UserItem[],
         meta: data.meta as UsersResponse["meta"],
@@ -245,6 +247,14 @@ export function UsersPage() {
   };
 
   const users = useMemo(() => usersQuery.data?.data ?? [], [usersQuery.data]);
+  const total = usersQuery.data?.meta.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const isPending = createMutation.isPending || updateMutation.isPending;
 
@@ -417,6 +427,38 @@ export function UsersPage() {
           {usersQuery.isLoading && (
             <div className="flex justify-center py-4">
               <Spinner className="h-6 w-6 text-muted-foreground" />
+            </div>
+          )}
+
+          {!usersQuery.isLoading && totalPages > 1 && (
+            <div className="flex items-center justify-between pt-4 text-sm">
+              <div className="text-muted-foreground">
+                {total} 件中 {Math.min((currentPage - 1) * perPage + 1, total)}-
+                {Math.min(currentPage * perPage, total)} 件
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  disabled={currentPage === 1}
+                >
+                  前へ
+                </Button>
+                <span className="text-muted-foreground">
+                  {currentPage} / {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setCurrentPage((page) => Math.min(totalPages, page + 1))
+                  }
+                  disabled={currentPage === totalPages}
+                >
+                  次へ
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>
