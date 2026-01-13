@@ -166,8 +166,12 @@ class CompanyCalendarService
         $start = $request->input('start');
         $end = $request->input('end');
 
-        $startAt = $start ? Carbon::parse($start) : now()->startOfDay();
-        $endAt = $end ? Carbon::parse($end) : now()->addDays(7)->endOfDay();
+        $startAt = $start
+            ? Carbon::parse($start)
+            : now()->startOfWeek(Carbon::MONDAY);
+        $endAt = $end
+            ? Carbon::parse($end)
+            : now()->endOfWeek(Carbon::SUNDAY);
 
         return [$startAt, $endAt, $request->input('email')];
     }

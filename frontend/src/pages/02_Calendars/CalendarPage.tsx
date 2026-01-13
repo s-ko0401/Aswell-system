@@ -88,6 +88,11 @@ export const CalendarPage: React.FC = () => {
 
         return { start: startOfDay(anchorDate), end: endOfDay(anchorDate) };
     }, [anchorDate, viewMode]);
+    const fetchRange = React.useMemo(() => {
+        const start = startOfWeek(anchorDate, { weekStartsOn: 1 });
+        const end = endOfWeek(anchorDate, { weekStartsOn: 1 });
+        return { start, end };
+    }, [anchorDate]);
 
     const days = React.useMemo(() => {
         if (viewMode === "day") {
@@ -118,13 +123,16 @@ export const CalendarPage: React.FC = () => {
         []
     );
 
-    const { data, isLoading, isError, error, isFetching } = useQuery<CompanyCalendarResponse, Error>({
-        queryKey: ["companyCalendar", viewMode, range.start.toISOString()],
+    const { data, isLoading, isError, error, isFetching } = useQuery<
+        CompanyCalendarResponse,
+        Error
+    >({
+        queryKey: ["companyCalendar", fetchRange.start.toISOString()],
         enabled: isLoggedIn,
         queryFn: () =>
             getCompanyCalendars({
-                start: range.start.toISOString(),
-                end: range.end.toISOString(),
+                start: fetchRange.start.toISOString(),
+                end: fetchRange.end.toISOString(),
             }),
         staleTime: 60_000,
         gcTime: 5 * 60_000,
@@ -174,8 +182,8 @@ export const CalendarPage: React.FC = () => {
     const refreshMutation = useMutation({
         mutationFn: () =>
             refreshCompanyCalendars({
-                start: range.start.toISOString(),
-                end: range.end.toISOString(),
+                start: fetchRange.start.toISOString(),
+                end: fetchRange.end.toISOString(),
             }),
         onSuccess: () => {
             queryClient.invalidateQueries({
