@@ -825,7 +825,7 @@ export const CalendarPage: React.FC = () => {
                                         key={day.toISOString()}
                                         className={`border-r px-4 py-3 last:border-r-0 ${
                                             dayKey(day) === dayKey(new Date())
-                                                ? "bg-amber-50"
+                                                ? "bg-amber-50 dark:bg-amber-900/30 dark:ring-1 dark:ring-amber-400/40 dark:ring-inset"
                                                 : ""
                                         }`}
                                     >
@@ -907,7 +907,9 @@ export const CalendarPage: React.FC = () => {
                                                     <div
                                                         key={`${calendar.user.id}-${key}`}
                                                         className={`border-r px-4 py-3 last:border-r-0 ${
-                                                            isToday ? "bg-amber-50" : ""
+                                                            isToday
+                                                                ? "bg-amber-50 dark:bg-amber-900/30 dark:ring-1 dark:ring-amber-400/40 dark:ring-inset"
+                                                                : ""
                                                         }`}
                                                     >
                                                         {dayEvents.length === 0 ? (
