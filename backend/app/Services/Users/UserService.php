@@ -5,6 +5,7 @@ namespace App\Services\Users;
 use App\Http\Requests\Users\StoreUserRequest;
 use App\Http\Requests\Users\UpdateUserRequest;
 use App\Models\User;
+use App\Support\PagePermissions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -52,6 +53,7 @@ class UserService
             'loginid' => $request->input('loginid'),
             'password' => Hash::make($request->input('password')),
             'role' => (int) $request->input('role'),
+            'page_permissions' => $request->input('page_permissions'),
         ]);
 
         return response()->json([
@@ -69,6 +71,10 @@ class UserService
         $user->email = $request->input('email');
         $user->loginid = $request->input('loginid');
         $user->role = (int) $request->input('role');
+
+        if ($request->has('page_permissions')) {
+            $user->page_permissions = $request->input('page_permissions');
+        }
 
         if ($request->filled('password')) {
             $user->password = Hash::make($request->input('password'));
@@ -103,6 +109,7 @@ class UserService
             'email' => $user->email,
             'loginid' => $user->loginid,
             'role' => (int) $user->role,
+            'page_permissions' => PagePermissions::resolve($user),
             'created_at' => $user->created_at?->toIso8601String(),
             'updated_at' => $user->updated_at?->toIso8601String(),
         ];

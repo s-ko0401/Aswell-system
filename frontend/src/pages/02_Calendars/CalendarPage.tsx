@@ -64,6 +64,9 @@ export const CalendarPage: React.FC = () => {
     const isLoggedIn = Boolean(me?.email);
     const [viewMode, setViewMode] = React.useState<"day" | "week">("day");
     const queryClient = useQueryClient();
+    const [sourceFilters, setSourceFilters] = React.useState<Set<"outlook" | "google">>(
+        () => new Set(["outlook"])
+    );
 
     const [anchorDate, setAnchorDate] = React.useState(() => new Date());
     const [isCalendarOpen, setIsCalendarOpen] = React.useState(false);
@@ -175,6 +178,8 @@ export const CalendarPage: React.FC = () => {
         placeholderData: (previousData) => previousData,
     });
 
+    const activeEventSource = activeEvent?.event.source ?? "outlook";
+    const isGoogleEvent = activeEventSource === "google";
     const eventDetailQuery = useQuery<CalendarEventDetail, Error>({
         queryKey: [
             "calendarEventDetail",
@@ -183,7 +188,8 @@ export const CalendarPage: React.FC = () => {
         ],
         enabled:
             Boolean(activeEvent?.event.id && activeEvent?.user.email) &&
-            isEventDrawerOpen,
+            isEventDrawerOpen &&
+            !isGoogleEvent,
         queryFn: () =>
             getCompanyCalendarEventDetail({
                 email: activeEvent?.user.email ?? "",
@@ -299,13 +305,14 @@ export const CalendarPage: React.FC = () => {
     const eventDetail = eventDetailQuery.data ?? activeEvent?.event;
     const isEventDetailLoading =
         eventDetailQuery.isLoading || eventDetailQuery.isFetching;
-    const eventOrganizer = eventDetailQuery.data?.organizer?.emailAddress;
-    const eventAttendees = eventDetailQuery.data?.attendees ?? [];
-    const eventDescription =
-        eventDetailQuery.data?.bodyPreview ||
-        (eventDetailQuery.data?.body?.contentType === "text"
-            ? eventDetailQuery.data?.body?.content
-            : undefined);
+    const eventOrganizer = !isGoogleEvent ? eventDetailQuery.data?.organizer?.emailAddress : undefined;
+    const eventAttendees = !isGoogleEvent ? eventDetailQuery.data?.attendees ?? [] : [];
+    const eventDescription = !isGoogleEvent
+        ? eventDetailQuery.data?.bodyPreview ||
+          (eventDetailQuery.data?.body?.contentType === "text"
+              ? eventDetailQuery.data?.body?.content
+              : undefined)
+        : undefined;
 
     const dayKey = (value: Date | string) => {
         const parts = new Intl.DateTimeFormat("ja-JP", {
@@ -323,10 +330,44 @@ export const CalendarPage: React.FC = () => {
         return `${partMap.year}-${partMap.month}-${partMap.day}`;
     };
 
+    const isSourceEnabled = React.useCallback(
+        (source: "outlook" | "google") => sourceFilters.has(source),
+        [sourceFilters]
+    );
+
+    const toggleSource = (source: "outlook" | "google") => {
+        setSourceFilters((prev) => {
+            const next = new Set(prev);
+            if (next.has(source)) {
+                if (next.size === 1) {
+                    return next;
+                }
+                next.delete(source);
+            } else {
+                next.add(source);
+            }
+            return next;
+        });
+    };
+
+    const filterEventsBySource = React.useCallback(
+        (events: CalendarEvent[]) =>
+            events.filter((event) => {
+                const source = event.source ?? "outlook";
+                return sourceFilters.has(source);
+            }),
+        [sourceFilters]
+    );
+
+    const filteredMemberEvents = React.useMemo(
+        () => filterEventsBySource(memberEvents),
+        [filterEventsBySource, memberEvents]
+    );
+
     const memberEventsByDay = React.useMemo(() => {
         const map = new Map<string, CalendarEvent[]>();
 
-        for (const event of memberEvents) {
+        for (const event of filteredMemberEvents) {
             const key = dayKey(event.start.dateTime);
             const list = map.get(key) ?? [];
             list.push(event);
@@ -438,6 +479,15 @@ export const CalendarPage: React.FC = () => {
             return tokens.every((token) => label.includes(token));
         });
     }, [filteredCalendars, normalizedMemberSearch]);
+
+    const sourceFilteredCalendars = React.useMemo(
+        () =>
+            visibleCalendars.map((calendar) => ({
+                ...calendar,
+                events: filterEventsBySource(calendar.events),
+            })),
+        [filterEventsBySource, visibleCalendars]
+    );
 
     const selectedCount = selectedMemberIds.size;
     const hasCalendars = calendars.length > 0;
@@ -721,6 +771,34 @@ export const CalendarPage: React.FC = () => {
                             </DialogContent>
                         </Dialog>
                         <div className="ml-auto flex flex-wrap items-center gap-2">
+                            <div className="flex items-center gap-1 rounded-md border px-1 py-1">
+                                <Button
+                                    type="button"
+                                    variant={
+                                        isSourceEnabled("outlook")
+                                            ? "default"
+                                            : "outline"
+                                    }
+                                    size="sm"
+                                    className="h-7 px-2 text-xs"
+                                    onClick={() => toggleSource("outlook")}
+                                >
+                                    Outlook
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant={
+                                        isSourceEnabled("google")
+                                            ? "default"
+                                            : "outline"
+                                    }
+                                    size="sm"
+                                    className="h-7 px-2 text-xs"
+                                    onClick={() => toggleSource("google")}
+                                >
+                                    Google
+                                </Button>
+                            </div>
                             <Button
                                 variant="outline"
                                 size="sm"
@@ -836,7 +914,7 @@ export const CalendarPage: React.FC = () => {
                                 ))}
                             </div>
                             <div className="divide-y">
-                                {visibleCalendars.map((calendar) => {
+                                {sourceFilteredCalendars.map((calendar) => {
                                     const eventsByDay = new Map<string, typeof calendar.events>();
 
                                     for (const event of calendar.events) {
@@ -938,6 +1016,12 @@ export const CalendarPage: React.FC = () => {
                                                                             <div className="font-medium">
                                                                                 {event.subject ||
                                                                                     "(件名なし)"}
+                                                                                {event.source ===
+                                                                                    "google" && (
+                                                                                    <span className="ml-1 text-[10px] text-muted-foreground">
+                                                                                        （Googleカレンダー）
+                                                                                    </span>
+                                                                                )}
                                                                             </div>
                                                                             <div className="text-muted-foreground">
                                                                                 {formatTimeInJst(
@@ -1116,6 +1200,12 @@ export const CalendarPage: React.FC = () => {
                                                                 <div>
                                                                     {event.subject ||
                                                                         "(件名なし)"}
+                                                                    {event.source ===
+                                                                        "google" && (
+                                                                        <span className="ml-1 text-[9px] text-muted-foreground">
+                                                                            （Googleカレンダー）
+                                                                        </span>
+                                                                    )}
                                                                 </div>
                                                             </button>
                                                         )
@@ -1146,8 +1236,13 @@ export const CalendarPage: React.FC = () => {
                     >
                         <DrawerContent>
                             <DrawerHeader>
-                                <DrawerTitle>
-                                    {eventDetail?.subject || "(件名なし)"}
+                                <DrawerTitle className="flex flex-wrap items-center gap-2">
+                                    <span>{eventDetail?.subject || "(件名なし)"}</span>
+                                    {isGoogleEvent && (
+                                        <span className="text-xs text-muted-foreground">
+                                            （Googleカレンダー）
+                                        </span>
+                                    )}
                                 </DrawerTitle>
                                 <DrawerDescription>
                                     {eventDetail?.start?.dateTime &&
@@ -1182,7 +1277,7 @@ export const CalendarPage: React.FC = () => {
                                         </div>
                                     )}
                                 </div>
-                                {eventOrganizer && (
+                                {!isGoogleEvent && eventOrganizer && (
                                     <div>
                                         <div className="text-xs text-muted-foreground">
                                             主催者
@@ -1199,7 +1294,7 @@ export const CalendarPage: React.FC = () => {
                                         )}
                                     </div>
                                 )}
-                                {eventAttendees.length > 0 && (
+                                {!isGoogleEvent && eventAttendees.length > 0 && (
                                     <div>
                                         <div className="text-xs text-muted-foreground">
                                             招待者
@@ -1239,7 +1334,7 @@ export const CalendarPage: React.FC = () => {
                                         </div>
                                     </div>
                                 )}
-                                {eventDetail?.location?.displayName && (
+                                {!isGoogleEvent && eventDetail?.location?.displayName && (
                                     <div>
                                         <div className="text-xs text-muted-foreground">
                                             場所
@@ -1249,7 +1344,7 @@ export const CalendarPage: React.FC = () => {
                                         </div>
                                     </div>
                                 )}
-                                {eventDescription && (
+                                {!isGoogleEvent && eventDescription && (
                                     <div>
                                         <div className="text-xs text-muted-foreground">
                                             詳細
@@ -1259,7 +1354,7 @@ export const CalendarPage: React.FC = () => {
                                         </div>
                                     </div>
                                 )}
-                                {eventDetailQuery.data?.onlineMeetingUrl && (
+                                {!isGoogleEvent && eventDetailQuery.data?.onlineMeetingUrl && (
                                     <div>
                                         <div className="text-xs text-muted-foreground">
                                             オンライン会議
@@ -1280,7 +1375,7 @@ export const CalendarPage: React.FC = () => {
                                         </a>
                                     </div>
                                 )}
-                                {eventDetailQuery.data?.webLink && (
+                                {!isGoogleEvent && eventDetailQuery.data?.webLink && (
                                     <div>
                                         <div className="text-xs text-muted-foreground">
                                             詳細リンク

@@ -23,6 +23,7 @@ class User extends Authenticatable implements JWTSubject
         'loginid',
         'password',
         'role',
+        'page_permissions',
     ];
 
     /**
@@ -43,6 +44,7 @@ class User extends Authenticatable implements JWTSubject
     {
         return [
             'password' => 'hashed',
+            'page_permissions' => 'array',
         ];
     }
 

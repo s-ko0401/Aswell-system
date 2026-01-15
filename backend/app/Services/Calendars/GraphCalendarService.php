@@ -77,7 +77,7 @@ class GraphCalendarService
             if (!$forceRefresh && Cache::has($cacheKey)) {
                 $calendars[] = [
                     'user' => $userPayload,
-                    'events' => Cache::get($cacheKey, []),
+                    'events' => $this->tagOutlookEvents(Cache::get($cacheKey, [])),
                 ];
                 continue;
             }
@@ -152,7 +152,7 @@ class GraphCalendarService
                     continue;
                 }
 
-                $events = $response->json('value') ?? [];
+                $events = $this->tagOutlookEvents($response->json('value') ?? []);
                 Cache::put($item['cache_key'], $events, now()->addSeconds(self::CALENDAR_CACHE_TTL_SECONDS));
 
                 $calendars[] = [
@@ -185,7 +185,13 @@ class GraphCalendarService
                 ->get("https://graph.microsoft.com/v1.0/users/{$encodedUser}/events/{$encodedEvent}", $this->eventDetailQueryParams())
                 ->throw();
 
-            return $response->json() ?? [];
+            $event = $response->json() ?? [];
+
+            if (is_array($event) && !array_key_exists('source', $event)) {
+                $event['source'] = 'outlook';
+            }
+
+            return $event;
         });
     }
 
@@ -205,7 +211,7 @@ class GraphCalendarService
             )
             ->throw();
 
-        return $response->json('value') ?? [];
+        return $this->tagOutlookEvents($response->json('value') ?? []);
     }
 
     private function calendarCacheKey(string $userIdOrEmail, Carbon $start, Carbon $end): string
@@ -216,6 +222,25 @@ class GraphCalendarService
             $start->toAtomString(),
             $end->toAtomString()
         );
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $events
+     * @return array<int, array<string, mixed>>
+     */
+    private function tagOutlookEvents(array $events): array
+    {
+        return array_map(function ($event) {
+            if (!is_array($event)) {
+                return $event;
+            }
+
+            if (!array_key_exists('source', $event)) {
+                $event['source'] = 'outlook';
+            }
+
+            return $event;
+        }, $events);
     }
 
     private function eventDetailCacheKey(string $userIdOrEmail, string $eventId): string

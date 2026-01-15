@@ -3,7 +3,9 @@
 namespace App\Services\Calendars;
 
 use App\Models\User;
+use App\Models\CalendarAcl;
 use App\Services\Calendars\GraphCalendarService;
+use App\Services\Integrations\GoogleIntegrationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -15,7 +17,10 @@ class CompanyCalendarService
     private const STALE_AFTER_SECONDS = 300;
     private const REFRESH_LOCK_TTL_SECONDS = 300;
 
-    public function __construct(private GraphCalendarService $calendarService)
+    public function __construct(
+        private GraphCalendarService $calendarService,
+        private GoogleIntegrationService $googleIntegrationService
+    )
     {
     }
 
@@ -24,11 +29,21 @@ class CompanyCalendarService
         [$startAt, $endAt, $email] = $this->resolveRangeAndEmail($request);
         $cached = $this->getCachedPayload($startAt, $endAt, $email);
         $shouldRefresh = $this->shouldRefresh($cached['last_updated_at'] ?? null);
+        $viewerId = $request->user()?->id;
+        $users = $this->resolveUsers($email);
 
         if (app()->environment('local') &&
             empty($cached['calendars']) &&
             empty($cached['last_updated_at'])) {
             $payload = $this->refreshCache($startAt, $endAt, $email, true);
+            $payload['calendars'] = $this->appendGoogleCalendars(
+                $payload['calendars'] ?? [],
+                $users,
+                $startAt,
+                $endAt,
+                true,
+                $viewerId
+            );
 
             return response()->json([
                 'success' => true,
@@ -54,7 +69,14 @@ class CompanyCalendarService
                     'start' => $startAt->toAtomString(),
                     'end' => $endAt->toAtomString(),
                 ],
-                'calendars' => $cached['calendars'] ?? [],
+                'calendars' => $this->appendGoogleCalendars(
+                    $cached['calendars'] ?? [],
+                    $users,
+                    $startAt,
+                    $endAt,
+                    false,
+                    $viewerId
+                ),
                 'errors' => $cached['errors'] ?? [],
                 'status' => $shouldRefresh ? 'refreshing' : 'fresh',
                 'last_updated_at' => $cached['last_updated_at'] ?? null,
@@ -68,6 +90,16 @@ class CompanyCalendarService
     {
         [$startAt, $endAt, $email] = $this->resolveRangeAndEmail($request);
         $payload = $this->refreshCache($startAt, $endAt, $email, true);
+        $viewerId = $request->user()?->id;
+        $users = $this->resolveUsers($email);
+        $payload['calendars'] = $this->appendGoogleCalendars(
+            $payload['calendars'] ?? [],
+            $users,
+            $startAt,
+            $endAt,
+            true,
+            $viewerId
+        );
 
         return response()->json([
             'success' => true,
@@ -205,6 +237,19 @@ class CompanyCalendarService
     private function resolveUsers(?string $email): array
     {
         if ($email) {
+            $user = User::query()->where('email', $email)->first(['id', 'email', 'username', 'role']);
+
+            if ($user) {
+                return [
+                    [
+                        'id' => $user->id,
+                        'email' => $user->email,
+                        'username' => $user->username,
+                        'role' => (int) $user->role,
+                    ],
+                ];
+            }
+
             return [
                 [
                     'id' => $email,
@@ -270,5 +315,152 @@ class CompanyCalendarService
     private function lockKey(Carbon $startAt, Carbon $endAt, ?string $email): string
     {
         return $this->cacheKey($startAt, $endAt, $email) . '.refreshing';
+    }
+
+    /**
+     * @param array<int, array{user: array{id:mixed,email:?string,username:?string,role?:mixed}, events: array<int, array<string, mixed>>}> $calendars
+     * @param array<int, array{id:mixed,email:?string,username:?string,role?:mixed}> $users
+     * @return array<int, array{user: array{id:mixed,email:?string,username:?string,role?:mixed}, events: array<int, array<string, mixed>>}>
+     */
+    private function appendGoogleCalendars(
+        array $calendars,
+        array $users,
+        Carbon $startAt,
+        Carbon $endAt,
+        bool $forceRefresh,
+        ?int $viewerId
+    ): array {
+        if (!$viewerId) {
+            return $calendars;
+        }
+
+        $allowedOwnerIds = $this->allowedGoogleOwnerIds($viewerId);
+        if (empty($allowedOwnerIds)) {
+            return $calendars;
+        }
+
+        $allowedSet = array_flip($allowedOwnerIds);
+        $calendarIndex = [];
+
+        foreach ($calendars as $index => $calendar) {
+            $userId = $calendar['user']['id'] ?? (string) $index;
+            $calendarIndex[(string) $userId] = $index;
+        }
+
+        foreach ($users as $user) {
+            $rawId = $user['id'] ?? null;
+            if (!is_numeric($rawId)) {
+                continue;
+            }
+
+            $userId = (int) $rawId;
+            if (!isset($allowedSet[$userId])) {
+                continue;
+            }
+
+            $googleEvents = $this->googleIntegrationService->eventsForUserId(
+                $userId,
+                $startAt,
+                $endAt,
+                $forceRefresh
+            );
+
+            if (empty($googleEvents)) {
+                continue;
+            }
+
+            $normalizedEvents = $this->normalizeGoogleEvents($googleEvents);
+            $index = $calendarIndex[(string) $userId] ?? null;
+
+            if ($index === null) {
+                $calendars[] = [
+                    'user' => [
+                        'id' => $userId,
+                        'email' => $user['email'] ?? null,
+                        'username' => $user['username'] ?? null,
+                        'role' => $user['role'] ?? null,
+                    ],
+                    'events' => $normalizedEvents,
+                ];
+                $calendarIndex[(string) $userId] = array_key_last($calendars);
+                continue;
+            }
+
+            $existingEvents = $calendars[$index]['events'] ?? [];
+            $calendars[$index]['events'] = $this->mergeEvents(
+                $existingEvents,
+                $normalizedEvents
+            );
+        }
+
+        return $calendars;
+    }
+
+    /**
+     * @param array<int, array{id:string,summary:string,start:string,end:string,all_day:bool}> $events
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizeGoogleEvents(array $events): array
+    {
+        $timezone = config('app.timezone', 'UTC');
+
+        return array_values(array_filter(array_map(function (array $event) use ($timezone) {
+            $start = $event['start'] ?? null;
+            $end = $event['end'] ?? null;
+
+            if (!is_string($start) || !is_string($end)) {
+                return null;
+            }
+
+            return [
+                'id' => 'google:' . ($event['id'] ?? ''),
+                'subject' => $event['summary'] ?? '',
+                'start' => [
+                    'dateTime' => $start,
+                    'timeZone' => $timezone,
+                ],
+                'end' => [
+                    'dateTime' => $end,
+                    'timeZone' => $timezone,
+                ],
+                'source' => 'google',
+                'isAllDay' => (bool) ($event['all_day'] ?? false),
+            ];
+        }, $events)));
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $baseEvents
+     * @param array<int, array<string, mixed>> $additionalEvents
+     * @return array<int, array<string, mixed>>
+     */
+    private function mergeEvents(array $baseEvents, array $additionalEvents): array
+    {
+        $events = array_merge($baseEvents, $additionalEvents);
+
+        usort($events, function ($a, $b) {
+            $startA = $a['start']['dateTime'] ?? null;
+            $startB = $b['start']['dateTime'] ?? null;
+
+            return strtotime((string) $startA) <=> strtotime((string) $startB);
+        });
+
+        return $events;
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function allowedGoogleOwnerIds(int $viewerId): array
+    {
+        $ownerIds = CalendarAcl::query()
+            ->where('provider', 'google')
+            ->where('viewer_user_id', $viewerId)
+            ->pluck('owner_user_id')
+            ->all();
+
+        $ownerIds[] = $viewerId;
+
+        return array_values(array_unique(array_map('intval', $ownerIds)));
     }
 }

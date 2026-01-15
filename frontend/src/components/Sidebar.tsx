@@ -1,10 +1,12 @@
 import { useAtom } from "jotai";
-import { Building2, ChevronDown, ChevronRight, LogOut, Settings, Users, GraduationCap, FileText, List, Sun, Moon, Laptop, Calendar } from "lucide-react";
+import { Building2, ChevronDown, ChevronRight, LogOut, Settings, Users, GraduationCap, FileText, List, Sun, Moon, Laptop, Calendar, Home, User, History } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
+import { hasPagePermission } from "@/lib/pagePermissions";
 import { calendarMenuOpenAtom, settingsMenuOpenAtom, trainingMenuOpenAtom } from "@/state/ui";
 import { tokenStorage } from "@/lib/auth";
+import api from "@/lib/api";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useTheme } from "@/components/theme-provider";
 import {
@@ -43,11 +45,21 @@ export function Sidebar() {
   const queryClient = useQueryClient();
   const location = useLocation();
   const isUsersActive = location.pathname.startsWith("/settings/users");
+  const isAuthLogsActive = location.pathname.startsWith("/settings/auth-logs");
+  const isAdmin = user?.role === 1;
+  const canViewDashboard = isAdmin || hasPagePermission(user?.page_permissions, "dashboard");
+  const canViewCalendars = isAdmin || hasPagePermission(user?.page_permissions, "calendars");
+  const canViewTrainings = isAdmin || hasPagePermission(user?.page_permissions, "trainings");
   const displayName = user?.username ?? "admin";
   const displayEmail = user?.email ?? "s-ko@as-well.co.jp";
   const initials = displayName.slice(0, 2).toUpperCase();
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await api.post("/auth/logout");
+    } catch {
+      // Ignore API errors and clear local session anyway.
+    }
     tokenStorage.clear();
     queryClient.clear();
     navigate("/login");
@@ -71,76 +83,100 @@ export function Sidebar() {
       </SidebarHeader>
       <SidebarSeparator />
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel className="flex items-center gap-2 text-xs">
-            <GraduationCap className="h-4 w-4" />
-            <span>社内研修</span>
-          </SidebarGroupLabel>
-          <SidebarGroupAction
-            title="社内研修メニューを切り替え"
-            onClick={() => setTrainingOpen((open) => !open)}
-          >
-            {trainingOpen ? (
-              <ChevronDown className="h-4 w-4" />
-            ) : (
-              <ChevronRight className="h-4 w-4" />
-            )}
-          </SidebarGroupAction>
-          {trainingOpen && (
+        {canViewDashboard && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="flex items-center gap-2 text-xs">
+              <Home className="h-4 w-4" />
+              <span>ダッシュボード</span>
+            </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={location.pathname === "/training/templates"} tooltip="研修テンプレート">
-                    <NavLink to="/training/templates">
-                      <FileText className="h-4 w-4" />
-                      <span>研修テンプレート</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={location.pathname === "/training/list"} tooltip="研修一覧">
-                    <NavLink to="/training/list">
-                      <List className="h-4 w-4" />
-                      <span>研修一覧</span>
+                  <SidebarMenuButton asChild isActive={location.pathname === "/home"} tooltip="ダッシュボード">
+                    <NavLink to="/home">
+                      <Home className="h-4 w-4" />
+                      <span>ダッシュボード</span>
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
-          )}
-        </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupLabel className="flex items-center gap-2 text-xs">
-            <Calendar className="h-4 w-4" />
-            <span>カレンダー</span>
-          </SidebarGroupLabel>
-          <SidebarGroupAction
-            title="カレンダーメニューを切り替え"
-            onClick={() => setCalendarOpen((open) => !open)}
-          >
-            {calendarOpen ? (
-              <ChevronDown className="h-4 w-4" />
-            ) : (
-              <ChevronRight className="h-4 w-4" />
+          </SidebarGroup>
+        )}
+        {canViewCalendars && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="flex items-center gap-2 text-xs">
+              <Calendar className="h-4 w-4" />
+              <span>カレンダー</span>
+            </SidebarGroupLabel>
+            <SidebarGroupAction
+              title="カレンダーメニューを切り替え"
+              onClick={() => setCalendarOpen((open) => !open)}
+            >
+              {calendarOpen ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+            </SidebarGroupAction>
+            {calendarOpen && (
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild isActive={location.pathname === "/calendars"} tooltip="カレンダー">
+                      <NavLink to="/calendars">
+                        <Calendar className="h-4 w-4" />
+                        <span>カレンダー</span>
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroupContent>
             )}
-          </SidebarGroupAction>
-          {calendarOpen && (
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={location.pathname === "/calendars"} tooltip="カレンダー">
-                    <NavLink to="/calendars">
-                      <Calendar className="h-4 w-4" />
-                      <span>カレンダー</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          )}
-        </SidebarGroup>
+          </SidebarGroup>
+        )}
+        {canViewTrainings && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="flex items-center gap-2 text-xs">
+              <GraduationCap className="h-4 w-4" />
+              <span>社内研修</span>
+            </SidebarGroupLabel>
+            <SidebarGroupAction
+              title="社内研修メニューを切り替え"
+              onClick={() => setTrainingOpen((open) => !open)}
+            >
+              {trainingOpen ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+            </SidebarGroupAction>
+            {trainingOpen && (
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild isActive={location.pathname === "/training/templates"} tooltip="研修テンプレート">
+                      <NavLink to="/training/templates">
+                        <FileText className="h-4 w-4" />
+                        <span>研修テンプレート</span>
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild isActive={location.pathname === "/training/list"} tooltip="研修一覧">
+                      <NavLink to="/training/list">
+                        <List className="h-4 w-4" />
+                        <span>研修一覧</span>
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            )}
+          </SidebarGroup>
+        )}
         <SidebarSeparator className="my-2" />
-        {user?.role === 1 && (
+        {isAdmin && (
           <SidebarGroup>
             <SidebarGroupLabel className="flex items-center gap-2 text-xs">
               <Settings className="h-4 w-4" />
@@ -167,6 +203,14 @@ export function Sidebar() {
                       </NavLink>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild isActive={isAuthLogsActive} tooltip="操作履歴">
+                      <NavLink to="/settings/auth-logs">
+                        <History className="h-4 w-4" />
+                        <span>操作履歴</span>
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarGroupContent>
             )}
@@ -190,6 +234,11 @@ export function Sidebar() {
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={() => navigate("/profile")}>
+                  <User className="mr-2 h-4 w-4" />
+                  <span>プロフィール</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuSub>
                   <DropdownMenuSubTrigger>
                     <Sun className="mr-2 h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />

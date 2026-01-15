@@ -8,6 +8,7 @@ type AuthUser = {
   email: string;
   loginid: string;
   role: number;
+  page_permissions?: string[];
 };
 
 export function useAuth() {

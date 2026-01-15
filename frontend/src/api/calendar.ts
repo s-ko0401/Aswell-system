@@ -13,6 +13,8 @@ export type CalendarEvent = {
   location?: {
     displayName?: string;
   };
+  source?: "outlook" | "google";
+  isAllDay?: boolean;
 };
 
 export type CalendarAttendee = {
@@ -45,6 +47,7 @@ export type CalendarEventDetail = CalendarEvent & {
   isAllDay?: boolean;
   onlineMeetingUrl?: string;
   webLink?: string;
+  source?: "outlook" | "google";
 };
 
 export type UserCalendar = {

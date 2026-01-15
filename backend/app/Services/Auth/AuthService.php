@@ -3,10 +3,16 @@
 namespace App\Services\Auth;
 
 use App\Http\Requests\Auth\LoginRequest;
+use App\Support\PagePermissions;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class AuthService
 {
+    public function __construct(private AuthLogService $authLogService)
+    {
+    }
+
     public function login(LoginRequest $request): JsonResponse
     {
         $credentials = $request->only(['loginid', 'password']);
@@ -22,13 +28,16 @@ class AuthService
             ], 401);
         }
 
+        $user = auth('api')->user();
+        $this->authLogService->record($user->id, AuthLogService::ACTION_LOGIN, $request);
+
         return response()->json([
             'success' => true,
             'data' => [
                 'access_token' => $token,
                 'token_type' => 'Bearer',
                 'expires_in' => auth('api')->factory()->getTTL() * 60,
-                'user' => $this->userPayload(auth('api')->user()),
+                'user' => $this->userPayload($user),
             ],
             'message' => '',
         ]);
@@ -43,8 +52,13 @@ class AuthService
         ]);
     }
 
-    public function logout(): JsonResponse
+    public function logout(Request $request): JsonResponse
     {
+        $user = auth('api')->user();
+        if ($user) {
+            $this->authLogService->record($user->id, AuthLogService::ACTION_LOGOUT, $request);
+        }
+
         auth('api')->logout();
 
         return response()->json([
@@ -62,6 +76,7 @@ class AuthService
             'email' => $user->email,
             'loginid' => $user->loginid,
             'role' => (int) $user->role,
+            'page_permissions' => PagePermissions::resolve($user),
         ];
     }
 }

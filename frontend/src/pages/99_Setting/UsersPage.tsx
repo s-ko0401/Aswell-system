@@ -3,7 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
-import { Edit, MoreVertical, Plus, Trash2 } from "lucide-react";
+import { Edit, MoreVertical, Plus, Trash2, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -53,6 +53,8 @@ import {
 import api from "@/lib/api";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { PAGE_PERMISSION_OPTIONS, normalizePagePermissions, type PagePermissionKey } from "@/lib/pagePermissions";
 
 const schema = z.object({
   username: z.string().min(1, "必須です").max(100, "100文字以内"),
@@ -70,6 +72,7 @@ type UserItem = {
   email: string;
   loginid: string;
   role: number;
+  page_permissions?: string[];
   created_at: string | null;
   updated_at: string | null;
 };
@@ -93,13 +96,18 @@ function formatDate(dateString: string | null): string {
 }
 
 export function UsersPage() {
+  const { data: currentUser } = useAuth();
   const [open, setOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState<number | null>(null);
+  const [permissionOpen, setPermissionOpen] = useState(false);
+  const [permissionUser, setPermissionUser] = useState<UserItem | null>(null);
+  const [selectedPermissions, setSelectedPermissions] = useState<PagePermissionKey[]>([]);
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const perPage = 20;
   const isEditMode = editingUserId !== null;
+  const isAdmin = currentUser?.role === 1;
   const { toast } = useToast();
 
   const form = useForm<UserFormValues>({
@@ -196,6 +204,39 @@ export function UsersPage() {
     },
   });
 
+  const permissionMutation = useMutation({
+    mutationFn: async () => {
+      if (!permissionUser) {
+        throw new Error("user is required");
+      }
+      const payload = {
+        username: permissionUser.username,
+        email: permissionUser.email,
+        loginid: permissionUser.loginid,
+        role: Number(permissionUser.role),
+        page_permissions: selectedPermissions,
+      };
+      const { data } = await api.put(`/users/${permissionUser.id}`, payload);
+      return data;
+    },
+    onSuccess: () => {
+      setPermissionOpen(false);
+      setPermissionUser(null);
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["me"] });
+      toast({
+        title: "ページ権限を更新しました",
+      });
+    },
+    onError: () => {
+      toast({
+        variant: "destructive",
+        title: "更新に失敗しました",
+        description: "入力内容を確認してください",
+      });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       await api.delete(`/users/${id}`);
@@ -246,6 +287,21 @@ export function UsersPage() {
     setOpen(true);
   };
 
+  const handleEditPermissions = (user: UserItem) => {
+    setPermissionUser(user);
+    setSelectedPermissions(normalizePagePermissions(user.page_permissions));
+    setPermissionOpen(true);
+  };
+
+  const togglePermission = (key: PagePermissionKey) => {
+    setSelectedPermissions((prev) => {
+      if (prev.includes(key)) {
+        return prev.filter((permission) => permission !== key);
+      }
+      return [...prev, key];
+    });
+  };
+
   const users = useMemo(() => usersQuery.data?.data ?? [], [usersQuery.data]);
   const total = usersQuery.data?.meta.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / perPage));
@@ -257,6 +313,7 @@ export function UsersPage() {
   }, [currentPage, totalPages]);
 
   const isPending = createMutation.isPending || updateMutation.isPending;
+  const isPermissionPending = permissionMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -363,6 +420,57 @@ export function UsersPage() {
             </div>
           </DrawerContent>
         </Drawer>
+        <Drawer
+          open={permissionOpen}
+          onOpenChange={(open) => {
+            setPermissionOpen(open);
+            if (!open) {
+              setPermissionUser(null);
+            }
+          }}
+        >
+          <DrawerContent className="h-[70vh]">
+            <div className="mx-auto flex h-full w-full max-w-xl flex-col overflow-y-auto">
+              <DrawerHeader>
+                <DrawerTitle>ページ権限</DrawerTitle>
+                <DrawerDescription>
+                  {permissionUser?.username ?? "ユーザー"}が表示できるページを選択してください。
+                </DrawerDescription>
+              </DrawerHeader>
+              <div className="flex-1 space-y-3 px-4">
+                {PAGE_PERMISSION_OPTIONS.map((option) => (
+                  <label
+                    key={option.key}
+                    className="flex items-center gap-3 rounded-md border px-3 py-2 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={selectedPermissions.includes(option.key)}
+                      onChange={() => togglePermission(option.key)}
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                ))}
+              </div>
+              <DrawerFooter>
+                <Button
+                  type="button"
+                  onClick={() => permissionMutation.mutate()}
+                  disabled={isPermissionPending || !permissionUser}
+                >
+                  {isPermissionPending && <Spinner className="mr-2 h-4 w-4" />}
+                  更新
+                </Button>
+                <DrawerClose asChild>
+                  <Button variant="outline" type="button">
+                    キャンセル
+                  </Button>
+                </DrawerClose>
+              </DrawerFooter>
+            </div>
+          </DrawerContent>
+        </Drawer>
       </div>
 
       <Card>
@@ -406,6 +514,12 @@ export function UsersPage() {
                           <Edit className="mr-2 h-4 w-4" />
                           <span>編集</span>
                         </DropdownMenuItem>
+                        {isAdmin && (
+                          <DropdownMenuItem onClick={() => handleEditPermissions(user)}>
+                            <Shield className="mr-2 h-4 w-4" />
+                            <span>ページ権限</span>
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem
                           className="text-destructive"
                           onClick={() => {

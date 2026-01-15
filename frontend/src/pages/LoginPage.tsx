@@ -30,6 +30,7 @@ type LoginResponse = {
     email: string;
     loginid: string;
     role: number;
+    page_permissions?: string[];
   };
 };
 
