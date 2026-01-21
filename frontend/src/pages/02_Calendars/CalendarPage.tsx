@@ -384,7 +384,7 @@ export const CalendarPage: React.FC = () => {
         }
 
         return map;
-    }, [memberEvents]);
+    }, [filteredMemberEvents]);
 
     const sortedCalendars = React.useMemo(() => {
         const myEmail = me?.email?.toLowerCase();

@@ -73,6 +73,13 @@ export function ProfilePage() {
       const { data } = await api.get("/integrations/google/acl");
       return data.data as GoogleAclResponse;
     },
+    onSuccess: (data) => {
+      if (!isAclOpen || aclInitialized.current) {
+        return;
+      }
+      setSelectedViewerIds(new Set(data.viewer_ids ?? []));
+      aclInitialized.current = true;
+    },
   });
 
   const connectMutation = useMutation({
@@ -153,19 +160,26 @@ export function ProfilePage() {
     }
   }, [googleParam, navigate, queryClient, toast]);
 
-  useEffect(() => {
-    if (!isAclOpen) {
-      aclInitialized.current = false;
-      return;
+  const aclUsers = aclUsersQuery.data ?? [];
+  const aclCount = aclQuery.data?.viewer_ids?.length ?? 0;
+  const normalizedAclSearch = aclSearch.trim().toLowerCase();
+  const userId = user?.id ?? 0;
+  const aclVisibleUsers = useMemo(() => {
+    const base = aclUsers.filter((aclUser) => aclUser.id !== userId);
+    if (!normalizedAclSearch) {
+      return base;
     }
 
-    if (!aclQuery.data || aclInitialized.current) {
-      return;
+    const tokens = normalizedAclSearch.split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) {
+      return base;
     }
 
-    setSelectedViewerIds(new Set(aclQuery.data.viewer_ids ?? []));
-    aclInitialized.current = true;
-  }, [aclQuery.data, isAclOpen]);
+    return base.filter((aclUser) => {
+      const label = `${aclUser.username ?? ""} ${aclUser.email ?? ""}`.toLowerCase();
+      return tokens.every((token) => label.includes(token));
+    });
+  }, [aclUsers, normalizedAclSearch, userId]);
 
   if (isLoading) {
     return (
@@ -181,25 +195,17 @@ export function ProfilePage() {
 
   const roleLabel = user.role === 1 ? "システム管理者" : "一般ユーザー";
   const googleStatus = statusQuery.data?.google;
-  const aclUsers = aclUsersQuery.data ?? [];
-  const aclCount = aclQuery.data?.viewer_ids?.length ?? 0;
-  const normalizedAclSearch = aclSearch.trim().toLowerCase();
-  const aclVisibleUsers = useMemo(() => {
-    const base = aclUsers.filter((aclUser) => aclUser.id !== user.id);
-    if (!normalizedAclSearch) {
-      return base;
+  const handleAclOpenChange = (open: boolean) => {
+    setIsAclOpen(open);
+    if (!open) {
+      aclInitialized.current = false;
+      return;
     }
-
-    const tokens = normalizedAclSearch.split(/\s+/).filter(Boolean);
-    if (tokens.length === 0) {
-      return base;
+    if (aclQuery.data && !aclInitialized.current) {
+      setSelectedViewerIds(new Set(aclQuery.data.viewer_ids ?? []));
+      aclInitialized.current = true;
     }
-
-    return base.filter((aclUser) => {
-      const label = `${aclUser.username ?? ""} ${aclUser.email ?? ""}`.toLowerCase();
-      return tokens.every((token) => label.includes(token));
-    });
-  }, [aclUsers, normalizedAclSearch, user.id]);
+  };
 
   return (
     <div className="mx-auto w-full max-w-2xl space-y-8">
@@ -319,7 +325,7 @@ export function ProfilePage() {
         </Card>
       </div>
 
-      <Dialog open={isAclOpen} onOpenChange={setIsAclOpen}>
+      <Dialog open={isAclOpen} onOpenChange={handleAclOpenChange}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Googleカレンダーの公開範囲</DialogTitle>

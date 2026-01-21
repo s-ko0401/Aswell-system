@@ -23,8 +23,7 @@ Run this command from the `backend` directory:
 gcloud run deploy aswell-backend \
   --source . \
   --region asia-northeast1 \
-  --allow-unauthenticated \
-  --update-env-vars="APP_ENV=production,APP_DEBUG=false,CORS_ALLOWED_ORIGINS=https://aswell-system.vercel.app;http://localhost:5173"
+  --allow-unauthenticated
 ```
 
 ### Required Environment Variables / 必填環境變數 / 必要な環境変数

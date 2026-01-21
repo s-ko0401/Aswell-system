@@ -72,7 +72,7 @@ export function TemplateEditor({
     onSubmit,
     isPending,
 }: TemplateEditorProps) {
-    const [isEditing, setIsEditing] = useState(false);
+    const [manualEditing, setManualEditing] = useState(false);
     const form = useForm<TemplateFormValues>({
         resolver: zodResolver(templateSchema),
         defaultValues: {
@@ -87,36 +87,41 @@ export function TemplateEditor({
     });
 
     useEffect(() => {
-        if (open) {
-            if (template) {
-                setIsEditing(false); // Default to view mode when opening existing template
-                form.reset({
-                    name: template.name,
-                    major_items: template.major_items?.map((major) => ({
-                        id: major.id,
-                        name: major.name,
-                        sort: major.sort,
-                        middle_items: major.middle_items?.map((middle) => ({
-                            id: middle.id,
-                            name: middle.name,
-                            sort: middle.sort,
-                            minor_items: middle.minor_items?.map((minor) => ({
-                                id: minor.id,
-                                name: minor.name,
-                                sort: minor.sort,
-                            })),
+        if (!open) {
+            return;
+        }
+        if (template) {
+            form.reset({
+                name: template.name,
+                major_items: template.major_items?.map((major) => ({
+                    id: major.id,
+                    name: major.name,
+                    sort: major.sort,
+                    middle_items: major.middle_items?.map((middle) => ({
+                        id: middle.id,
+                        name: middle.name,
+                        sort: middle.sort,
+                        minor_items: middle.minor_items?.map((minor) => ({
+                            id: minor.id,
+                            name: minor.name,
+                            sort: minor.sort,
                         })),
                     })),
-                });
-            } else {
-                setIsEditing(true); // Default to edit mode for new template
-                form.reset({
-                    name: "",
-                    major_items: [],
-                });
-            }
+                })),
+            });
+        } else {
+            form.reset({
+                name: "",
+                major_items: [],
+            });
         }
     }, [open, template, form]);
+
+    const isEditing = !template || manualEditing;
+    const handleOpenChange = (nextOpen: boolean) => {
+        setManualEditing(false);
+        onOpenChange(nextOpen);
+    };
 
     const handleSubmit = (data: TemplateFormValues) => {
         // Auto-assign sort order based on index if needed, but for now we trust the form state
@@ -140,7 +145,7 @@ export function TemplateEditor({
     };
 
     return (
-        <Drawer open={open} onOpenChange={onOpenChange}>
+        <Drawer open={open} onOpenChange={handleOpenChange}>
             <DrawerContent>
                 <div className="w-full flex flex-col">
                     <DrawerHeader className="flex flex-row items-center justify-between border-b px-6 py-4">
@@ -154,7 +159,7 @@ export function TemplateEditor({
                         </div>
                         <div className="flex items-center gap-2">
                             {template && !isEditing && (
-                                <Button type="button" variant="outline" size="sm" onClick={() => setIsEditing(true)}>
+                                <Button type="button" variant="outline" size="sm" onClick={() => setManualEditing(true)}>
                                     <Pencil className="mr-2 h-4 w-4" />
                                     編集する
                                 </Button>

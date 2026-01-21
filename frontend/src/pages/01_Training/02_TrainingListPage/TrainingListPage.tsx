@@ -69,7 +69,7 @@ import { Calendar } from "../../../components/ui/calendar";
 import { Progress } from "../../../components/ui/progress";
 import { Spinner } from "../../../components/ui/spinner";
 import { getTrainings, createTraining, deleteTraining, type Training } from "../../../api/training_management";
-import { getTrainingTemplates } from "../../../api/training";
+import { getTrainingTemplates, type TrainingTemplate } from "../../../api/training";
 import { getUsersSelection } from "../../../api/users";
 import { TrainingDetailDrawer } from "./TrainingDetailDrawer";
 
@@ -245,7 +245,7 @@ export function TrainingListPage() {
                                                             </SelectTrigger>
                                                         </FormControl>
                                                         <SelectContent>
-                                                            {templates?.data?.map((t: any) => (
+                                                            {templates?.data?.map((t: TrainingTemplate) => (
                                                                 <SelectItem key={t.id} value={t.id.toString()}>
                                                                     {t.name}
                                                                 </SelectItem>

@@ -1,4 +1,4 @@
-import { useState, useEffect, type ChangeEvent } from "react";
+import { useState, type ChangeEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { X, Plus, Trash, ChevronLeft, Save, Pencil, Calendar as CalendarIcon, ArrowUp, ArrowDown, Trash2 } from "lucide-react";
 import { format } from "date-fns";
@@ -47,7 +47,9 @@ import {
     type TrainingMoveDirection,
     type TrainingStatus,
     type TrainingDailyReport,
-    type TrainingDailyReportEntry
+    type TrainingDailyReportEntry,
+    type CreateTrainingData,
+    type CreateDailyReportData
 } from "../../../api/training_management";
 import { getUsersSelection } from "../../../api/users";
 import {
@@ -104,7 +106,7 @@ export function TrainingDetailDrawer({ trainingId, open, onOpenChange, initialEd
     const { data: currentUser } = useAuth();
     const [reportView, setReportView] = useState<"list" | "detail" | "form">("list");
     const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
-    const [isEditingMetadata, setIsEditingMetadata] = useState(false);
+    const [isEditingMetadata, setIsEditingMetadata] = useState(initialEditMode);
     const [editName, setEditName] = useState("");
     const [editManagerId, setEditManagerId] = useState("");
     const [editTeacherId, setEditTeacherId] = useState("");
@@ -113,19 +115,6 @@ export function TrainingDetailDrawer({ trainingId, open, onOpenChange, initialEd
     const [editingItem, setEditingItem] = useState<EditingItem | null>(null);
     const [addingItem, setAddingItem] = useState<AddingItem | null>(null);
     const [isEditingTasks, setIsEditingTasks] = useState(false);
-
-    useEffect(() => {
-        if (!open) {
-            setReportView("list");
-            setSelectedReportId(null);
-            setIsEditingMetadata(false);
-            setEditingItem(null);
-            setAddingItem(null);
-            setIsEditingTasks(false);
-        } else if (initialEditMode) {
-            setIsEditingMetadata(true);
-        }
-    }, [open, initialEditMode]);
 
     const { data: training, isLoading } = useQuery({
         queryKey: ["training", trainingId],
@@ -162,7 +151,7 @@ export function TrainingDetailDrawer({ trainingId, open, onOpenChange, initialEd
     });
 
     const updateMetadataMutation = useMutation({
-        mutationFn: (data: any) => updateTraining(trainingId!, data),
+        mutationFn: (data: Partial<CreateTrainingData>) => updateTraining(trainingId!, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["training", trainingId] });
             queryClient.invalidateQueries({ queryKey: ["trainings"] });
@@ -1291,13 +1280,26 @@ function DailyReportForm({
     });
 
     const mutation = useMutation({
-        mutationFn: (data: any) => reportId ? updateDailyReport(reportId, data) : createDailyReport(trainingId, data),
+        mutationFn: (data: CreateDailyReportData) =>
+            reportId ? updateDailyReport(reportId, data) : createDailyReport(trainingId, data),
         onSuccess: () => {
             toast({ title: reportId ? "更新しました" : "作成しました", description: "日報を保存しました。" });
             onSuccess();
         },
-        onError: (error: any) => {
-            toast({ variant: "destructive", title: "エラー", description: error.response?.data?.message || "保存に失敗しました。" });
+        onError: (error: unknown) => {
+            const description = (() => {
+                if (error && typeof error === "object" && "response" in error) {
+                    const response = (error as { response?: { data?: { message?: string } } }).response;
+                    if (response?.data?.message) {
+                        return response.data.message;
+                    }
+                }
+                if (error instanceof Error) {
+                    return error.message;
+                }
+                return "保存に失敗しました。";
+            })();
+            toast({ variant: "destructive", title: "エラー", description });
         }
     });
 

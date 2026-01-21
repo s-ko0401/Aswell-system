@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -60,17 +60,17 @@ export function AuthLogsPage() {
         meta: data.meta as AuthLogsResponse["meta"],
       } satisfies AuthLogsResponse;
     },
+    onSuccess: (payload) => {
+      const totalPages = Math.max(1, Math.ceil(payload.meta.total / perPage));
+      if (currentPage > totalPages) {
+        setCurrentPage(totalPages);
+      }
+    },
   });
 
   const logs = logsQuery.data?.data ?? [];
   const meta = logsQuery.data?.meta ?? { page: 1, per_page: perPage, total: 0 };
   const totalPages = Math.max(1, Math.ceil(meta.total / perPage));
-
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
 
   return (
     <div className="space-y-6">

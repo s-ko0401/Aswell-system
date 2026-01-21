@@ -8,7 +8,7 @@ import { calendarMenuOpenAtom, settingsMenuOpenAtom, trainingMenuOpenAtom } from
 import { tokenStorage } from "@/lib/auth";
 import api from "@/lib/api";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { useTheme } from "@/components/theme-provider";
+import { useTheme } from "@/hooks/useTheme";
 import {
   DropdownMenu,
   DropdownMenuContent,

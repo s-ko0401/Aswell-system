@@ -1,6 +1,6 @@
 ﻿import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 import { Edit, MoreVertical, Plus, Trash2, Shield } from "lucide-react";
@@ -130,6 +130,12 @@ export function UsersPage() {
         meta: data.meta as UsersResponse["meta"],
       } satisfies UsersResponse;
     },
+    onSuccess: (payload) => {
+      const totalPages = Math.max(1, Math.ceil(payload.meta.total / perPage));
+      if (currentPage > totalPages) {
+        setCurrentPage(totalPages);
+      }
+    },
   });
 
   const createMutation = useMutation({
@@ -167,7 +173,13 @@ export function UsersPage() {
 
   const updateMutation = useMutation({
     mutationFn: async (values: UserFormValues) => {
-      const payload: any = {
+      const payload: {
+        username: string;
+        email: string;
+        loginid: string;
+        role: number;
+        password?: string;
+      } = {
         username: values.username,
         email: values.email,
         loginid: values.loginid,
@@ -305,12 +317,6 @@ export function UsersPage() {
   const users = useMemo(() => usersQuery.data?.data ?? [], [usersQuery.data]);
   const total = usersQuery.data?.meta.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / perPage));
-
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
 
   const isPending = createMutation.isPending || updateMutation.isPending;
   const isPermissionPending = permissionMutation.isPending;
