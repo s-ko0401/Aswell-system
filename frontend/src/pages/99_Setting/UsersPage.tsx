@@ -121,7 +121,7 @@ export function UsersPage() {
     },
   });
 
-  const usersQuery = useQuery({
+  const usersQuery = useQuery<UsersResponse, Error>({
     queryKey: ["users", currentPage],
     queryFn: async () => {
       const { data } = await api.get("/users", { params: { page: currentPage, per_page: perPage } });
@@ -129,12 +129,6 @@ export function UsersPage() {
         data: data.data as UserItem[],
         meta: data.meta as UsersResponse["meta"],
       } satisfies UsersResponse;
-    },
-    onSuccess: (payload) => {
-      const totalPages = Math.max(1, Math.ceil(payload.meta.total / perPage));
-      if (currentPage > totalPages) {
-        setCurrentPage(totalPages);
-      }
     },
   });
 

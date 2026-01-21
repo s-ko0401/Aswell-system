@@ -230,7 +230,11 @@ export function TemplateEditor({
                                             {isPending && <Spinner className="mr-2 h-4 w-4" />}
                                             保存
                                         </Button>
-                                        <Button type="button" variant="outline" onClick={() => template ? setIsEditing(false) : onOpenChange(false)}>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() => (template ? setManualEditing(false) : onOpenChange(false))}
+                                        >
                                             キャンセル
                                         </Button>
                                     </DrawerFooter>
