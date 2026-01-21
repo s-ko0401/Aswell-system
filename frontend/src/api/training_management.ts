@@ -1,6 +1,7 @@
 import api from "../lib/api";
 
 export type TrainingStatus = "未着手" | "研修中" | "完了";
+export type TrainingMoveDirection = "up" | "down";
 
 export type TrainingMinorItem = {
     id: number;
@@ -77,6 +78,66 @@ export const deleteTraining = async (id: number) => {
 
 export const updateTrainingItemStatus = async (itemId: number, status: TrainingStatus) => {
     const response = await api.put(`/training-items/${itemId}/status`, { status });
+    return response.data;
+};
+
+export const createTrainingMajorItem = async (trainingId: number, data: { name: string; after_id?: number }) => {
+    const response = await api.post(`/trainings/${trainingId}/major-items`, data);
+    return response.data;
+};
+
+export const updateTrainingMajorItem = async (id: number, data: { name: string }) => {
+    const response = await api.patch(`/training-major-items/${id}`, data);
+    return response.data;
+};
+
+export const deleteTrainingMajorItem = async (id: number) => {
+    const response = await api.delete(`/training-major-items/${id}`);
+    return response.data;
+};
+
+export const moveTrainingMajorItem = async (id: number, direction: TrainingMoveDirection) => {
+    const response = await api.post(`/training-major-items/${id}/move`, { direction });
+    return response.data;
+};
+
+export const createTrainingMiddleItem = async (majorId: number, data: { name: string; after_id?: number }) => {
+    const response = await api.post(`/training-major-items/${majorId}/middle-items`, data);
+    return response.data;
+};
+
+export const updateTrainingMiddleItem = async (id: number, data: { name: string }) => {
+    const response = await api.patch(`/training-middle-items/${id}`, data);
+    return response.data;
+};
+
+export const deleteTrainingMiddleItem = async (id: number) => {
+    const response = await api.delete(`/training-middle-items/${id}`);
+    return response.data;
+};
+
+export const moveTrainingMiddleItem = async (id: number, direction: TrainingMoveDirection) => {
+    const response = await api.post(`/training-middle-items/${id}/move`, { direction });
+    return response.data;
+};
+
+export const createTrainingMinorItem = async (middleId: number, data: { name: string; after_id?: number }) => {
+    const response = await api.post(`/training-middle-items/${middleId}/minor-items`, data);
+    return response.data;
+};
+
+export const updateTrainingMinorItem = async (id: number, data: { name: string }) => {
+    const response = await api.patch(`/training-minor-items/${id}`, data);
+    return response.data;
+};
+
+export const deleteTrainingMinorItem = async (id: number) => {
+    const response = await api.delete(`/training-minor-items/${id}`);
+    return response.data;
+};
+
+export const moveTrainingMinorItem = async (id: number, direction: TrainingMoveDirection) => {
+    const response = await api.post(`/training-minor-items/${id}/move`, { direction });
     return response.data;
 };
 

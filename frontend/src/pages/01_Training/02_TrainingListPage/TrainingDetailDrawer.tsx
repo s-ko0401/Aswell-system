@@ -1,12 +1,13 @@
 import { useState, useEffect, type ChangeEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { X, Plus, Trash, ChevronLeft, Save, Pencil, Calendar as CalendarIcon } from "lucide-react";
+import { X, Plus, Trash, ChevronLeft, Save, Pencil, Calendar as CalendarIcon, ArrowUp, ArrowDown, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 
 import { Button as ShadcnButton } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
 import { useToast } from "../../../hooks/use-toast";
+import { useAuth } from "../../../hooks/useAuth";
 import { cn } from "../../../lib/utils";
 import {
     Select,
@@ -28,9 +29,22 @@ import {
     updateDailyReport,
     deleteDailyReport,
     updateTraining,
+    createTrainingMajorItem,
+    updateTrainingMajorItem,
+    deleteTrainingMajorItem,
+    moveTrainingMajorItem,
+    createTrainingMiddleItem,
+    updateTrainingMiddleItem,
+    deleteTrainingMiddleItem,
+    moveTrainingMiddleItem,
+    createTrainingMinorItem,
+    updateTrainingMinorItem,
+    deleteTrainingMinorItem,
+    moveTrainingMinorItem,
     type TrainingMajorItem,
     type TrainingMiddleItem,
     type TrainingMinorItem,
+    type TrainingMoveDirection,
     type TrainingStatus,
     type TrainingDailyReport,
     type TrainingDailyReportEntry
@@ -70,9 +84,24 @@ interface TrainingDetailDrawerProps {
     initialEditMode?: boolean;
 }
 
+type TaskLevel = "major" | "middle" | "minor";
+
+type EditingItem = {
+    level: TaskLevel;
+    id: number;
+    name: string;
+};
+
+type AddingItem = {
+    level: TaskLevel;
+    parentId: number;
+    name: string;
+};
+
 export function TrainingDetailDrawer({ trainingId, open, onOpenChange, initialEditMode = false }: TrainingDetailDrawerProps) {
     const queryClient = useQueryClient();
     const { toast } = useToast();
+    const { data: currentUser } = useAuth();
     const [reportView, setReportView] = useState<"list" | "detail" | "form">("list");
     const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
     const [isEditingMetadata, setIsEditingMetadata] = useState(false);
@@ -81,12 +110,18 @@ export function TrainingDetailDrawer({ trainingId, open, onOpenChange, initialEd
     const [editTeacherId, setEditTeacherId] = useState("");
     const [editTraineeId, setEditTraineeId] = useState("");
     const [editStartDate, setEditStartDate] = useState<string | undefined>(undefined);
+    const [editingItem, setEditingItem] = useState<EditingItem | null>(null);
+    const [addingItem, setAddingItem] = useState<AddingItem | null>(null);
+    const [isEditingTasks, setIsEditingTasks] = useState(false);
 
     useEffect(() => {
         if (!open) {
             setReportView("list");
             setSelectedReportId(null);
             setIsEditingMetadata(false);
+            setEditingItem(null);
+            setAddingItem(null);
+            setIsEditingTasks(false);
         } else if (initialEditMode) {
             setIsEditingMetadata(true);
         }
@@ -139,6 +174,98 @@ export function TrainingDetailDrawer({ trainingId, open, onOpenChange, initialEd
         },
     });
 
+    const createItemMutation = useMutation({
+        mutationFn: async (payload: AddingItem) => {
+            switch (payload.level) {
+                case "major":
+                    return createTrainingMajorItem(payload.parentId, { name: payload.name });
+                case "middle":
+                    return createTrainingMiddleItem(payload.parentId, { name: payload.name });
+                case "minor":
+                    return createTrainingMinorItem(payload.parentId, { name: payload.name });
+                default:
+                    throw new Error("Unsupported item level");
+            }
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["training", trainingId] });
+            queryClient.invalidateQueries({ queryKey: ["trainings"] });
+            setAddingItem(null);
+            toast({ title: "追加しました", description: "タスクを追加しました。" });
+        },
+        onError: () => {
+            toast({ variant: "destructive", title: "エラー", description: "追加に失敗しました。" });
+        },
+    });
+
+    const updateItemMutation = useMutation({
+        mutationFn: async (payload: EditingItem) => {
+            switch (payload.level) {
+                case "major":
+                    return updateTrainingMajorItem(payload.id, { name: payload.name });
+                case "middle":
+                    return updateTrainingMiddleItem(payload.id, { name: payload.name });
+                case "minor":
+                    return updateTrainingMinorItem(payload.id, { name: payload.name });
+                default:
+                    throw new Error("Unsupported item level");
+            }
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["training", trainingId] });
+            queryClient.invalidateQueries({ queryKey: ["trainings"] });
+            setEditingItem(null);
+            toast({ title: "更新しました", description: "タスク名を更新しました。" });
+        },
+        onError: () => {
+            toast({ variant: "destructive", title: "エラー", description: "更新に失敗しました。" });
+        },
+    });
+
+    const deleteItemMutation = useMutation({
+        mutationFn: async (payload: { level: TaskLevel; id: number }) => {
+            switch (payload.level) {
+                case "major":
+                    return deleteTrainingMajorItem(payload.id);
+                case "middle":
+                    return deleteTrainingMiddleItem(payload.id);
+                case "minor":
+                    return deleteTrainingMinorItem(payload.id);
+                default:
+                    throw new Error("Unsupported item level");
+            }
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["training", trainingId] });
+            queryClient.invalidateQueries({ queryKey: ["trainings"] });
+            toast({ title: "削除しました", description: "タスクを削除しました。" });
+        },
+        onError: () => {
+            toast({ variant: "destructive", title: "エラー", description: "削除に失敗しました。" });
+        },
+    });
+
+    const moveItemMutation = useMutation({
+        mutationFn: async (payload: { level: TaskLevel; id: number; direction: TrainingMoveDirection }) => {
+            switch (payload.level) {
+                case "major":
+                    return moveTrainingMajorItem(payload.id, payload.direction);
+                case "middle":
+                    return moveTrainingMiddleItem(payload.id, payload.direction);
+                case "minor":
+                    return moveTrainingMinorItem(payload.id, payload.direction);
+                default:
+                    throw new Error("Unsupported item level");
+            }
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["training", trainingId] });
+        },
+        onError: () => {
+            toast({ variant: "destructive", title: "エラー", description: "並び替えに失敗しました。" });
+        },
+    });
+
     const statusMutation = useMutation({
         mutationFn: ({ itemId, status }: { itemId: number; status: TrainingStatus }) =>
             updateTrainingItemStatus(itemId, status),
@@ -175,6 +302,12 @@ export function TrainingDetailDrawer({ trainingId, open, onOpenChange, initialEd
         };
     };
     const stats = getSummaryStats();
+    const canEditTasks = Boolean(
+        training &&
+        currentUser &&
+        (currentUser.id === training.manager_id || currentUser.id === training.teacher_id)
+    );
+    const canEditTasksMode = canEditTasks && isEditingTasks;
 
     return (
         <Drawer open={open} onOpenChange={onOpenChange}>
@@ -430,34 +563,212 @@ export function TrainingDetailDrawer({ trainingId, open, onOpenChange, initialEd
                                             <div className="flex h-full items-center justify-center p-12">
                                                 <Spinner />
                                             </div>
-                                        ) : !training || !training.major_items || training.major_items.length === 0 ? (
-                                            <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-12">
-                                                <p className="text-lg font-medium">研修タスクがありません</p>
-                                                <p className="text-sm">テンプレートに項目が設定されているか確認してください。</p>
-                                            </div>
                                         ) : (
-                                            <div className="space-y-4 p-2 py-4">
-                                                <Accordion type="multiple" className="w-full space-y-4">
-                                                    {training.major_items?.map((major: TrainingMajorItem) => {
-                                                        const progress = calculateProgress(major);
-                                                        return (
-                                                            <AccordionItem key={major.id} value={`major-${major.id}`} className="border rounded-lg overflow-hidden bg-card">
-                                                                <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-muted/50 transition-colors border-l-4 border-l-primary">
-                                                                    <div className="flex flex-1 items-center justify-between mr-4">
-                                                                        <div className="flex items-center gap-2 text-lg font-bold">
-                                                                            <Badge variant="outline" className="font-normal">大項目</Badge>
-                                                                            {major.name}
-                                                                        </div>
-                                                                        <div className="flex items-center gap-4 w-1/3">
-                                                                            <Progress value={progress} className="h-2" />
-                                                                            <span className="text-sm font-medium text-muted-foreground min-w-[3rem] text-right">
-                                                                                {progress}%
-                                                                            </span>
-                                                                        </div>
+                                            <>
+                                                {canEditTasks && (
+                                                    <div className="flex items-center justify-end px-2 pt-4">
+                                                        <ShadcnButton
+                                                            size="sm"
+                                                            variant={isEditingTasks ? "default" : "outline"}
+                                                            onClick={() => {
+                                                                setIsEditingTasks((prev) => {
+                                                                    const next = !prev;
+                                                                    if (!next) {
+                                                                        setEditingItem(null);
+                                                                        setAddingItem(null);
+                                                                    }
+                                                                    return next;
+                                                                });
+                                                            }}
+                                                        >
+                                                            {isEditingTasks ? "編集を終了" : "編集"}
+                                                        </ShadcnButton>
+                                                    </div>
+                                                )}
+                                                {!training || !training.major_items || training.major_items.length === 0 ? (
+                                                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-12">
+                                                        <p className="text-lg font-medium">研修タスクがありません</p>
+                                                        <p className="text-sm">テンプレートに項目が設定されているか確認してください。</p>
+                                                        {canEditTasksMode && (
+                                                            <div className="mt-4 w-full max-w-xl">
+                                                                {addingItem && addingItem.level === "major" ? (
+                                                                    <div className="flex items-center gap-2 rounded-md border bg-muted/20 p-2">
+                                                                        <Input
+                                                                            value={addingItem.name}
+                                                                            onChange={(e) => setAddingItem({ ...addingItem, name: e.target.value })}
+                                                                            placeholder="大項目名を入力"
+                                                                        />
+                                                                        <ShadcnButton
+                                                                            size="sm"
+                                                                            onClick={() => createItemMutation.mutate(addingItem)}
+                                                                            disabled={!addingItem.name.trim()}
+                                                                        >
+                                                                            追加
+                                                                        </ShadcnButton>
+                                                                        <ShadcnButton size="sm" variant="ghost" onClick={() => setAddingItem(null)}>
+                                                                            キャンセル
+                                                                        </ShadcnButton>
                                                                     </div>
-                                                                </AccordionTrigger>
-                                                                <AccordionContent className="p-0">
-                                                                    <div className="p-4 space-y-4 bg-muted/10">
+                                                                ) : (
+                                                                    <ShadcnButton
+                                                                        size="sm"
+                                                                        variant="outline"
+                                                                        onClick={() =>
+                                                                            setAddingItem({
+                                                                                level: "major",
+                                                                                parentId: training?.id ?? 0,
+                                                                                name: "",
+                                                                            })
+                                                                        }
+                                                                    >
+                                                                        <Plus className="mr-2 h-4 w-4" />
+                                                                        大項目追加
+                                                                    </ShadcnButton>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-4 p-2 py-4">
+                                                        {canEditTasksMode && (
+                                                            <div className="flex justify-end px-2">
+                                                                {addingItem && addingItem.level === "major" ? (
+                                                                    <div className="flex w-full max-w-xl items-center gap-2 rounded-md border bg-muted/20 p-2">
+                                                                        <Input
+                                                                            value={addingItem.name}
+                                                                            onChange={(e) => setAddingItem({ ...addingItem, name: e.target.value })}
+                                                                            placeholder="大項目名を入力"
+                                                                        />
+                                                                        <ShadcnButton
+                                                                            size="sm"
+                                                                            onClick={() => createItemMutation.mutate(addingItem)}
+                                                                            disabled={!addingItem.name.trim()}
+                                                                        >
+                                                                            追加
+                                                                        </ShadcnButton>
+                                                                        <ShadcnButton size="sm" variant="ghost" onClick={() => setAddingItem(null)}>
+                                                                            キャンセル
+                                                                        </ShadcnButton>
+                                                                    </div>
+                                                                ) : (
+                                                                    <ShadcnButton
+                                                                        size="sm"
+                                                                        variant="outline"
+                                                                        onClick={() =>
+                                                                            setAddingItem({
+                                                                                level: "major",
+                                                                                parentId: training?.id ?? 0,
+                                                                                name: "",
+                                                                            })
+                                                                        }
+                                                                    >
+                                                                        <Plus className="mr-2 h-4 w-4" />
+                                                                        大項目追加
+                                                                    </ShadcnButton>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                        <Accordion type="multiple" className="w-full space-y-4">
+                                                            {training.major_items?.map((major: TrainingMajorItem) => {
+                                                                const progress = calculateProgress(major);
+                                                                return (
+                                                                    <AccordionItem key={major.id} value={`major-${major.id}`} className="border rounded-lg overflow-hidden bg-card">
+                                                                        <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-muted/50 transition-colors border-l-4 border-l-primary">
+                                                                            <div className="flex flex-1 items-center justify-between mr-4">
+                                                                                <div className="flex items-center gap-2 text-lg font-bold">
+                                                                                    <Badge variant="outline" className="font-normal">大項目</Badge>
+                                                                                    {major.name}
+                                                                                </div>
+                                                                                <div className="flex items-center gap-4 w-1/3">
+                                                                                    <Progress value={progress} className="h-2" />
+                                                                                    <span className="text-sm font-medium text-muted-foreground min-w-[3rem] text-right">
+                                                                                        {progress}%
+                                                                                    </span>
+                                                                                </div>
+                                                                            </div>
+                                                                        </AccordionTrigger>
+                                                                        <AccordionContent className="p-0">
+                                                                            <div className="p-4 space-y-4 bg-muted/10">
+                                                                                {canEditTasksMode && (
+                                                                            <div className="flex items-center justify-between rounded-md border bg-background px-3 py-2">
+                                                                                {editingItem && editingItem.level === "major" && editingItem.id === major.id ? (
+                                                                                    <div className="flex w-full items-center gap-2">
+                                                                                        <Input
+                                                                                            value={editingItem.name}
+                                                                                            onChange={(e) =>
+                                                                                                setEditingItem((prev) =>
+                                                                                                    prev && prev.id === major.id
+                                                                                                        ? { ...prev, name: e.target.value }
+                                                                                                        : prev
+                                                                                                )
+                                                                                            }
+                                                                                        />
+                                                                                        <ShadcnButton
+                                                                                            size="sm"
+                                                                                            onClick={() => updateItemMutation.mutate(editingItem)}
+                                                                                            disabled={!editingItem.name.trim()}
+                                                                                        >
+                                                                                            保存
+                                                                                        </ShadcnButton>
+                                                                                        <ShadcnButton size="sm" variant="ghost" onClick={() => setEditingItem(null)}>
+                                                                                            キャンセル
+                                                                                        </ShadcnButton>
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <>
+                                                                                        <span className="text-sm font-semibold">{major.name}</span>
+                                                                                        <div className="flex items-center gap-1">
+                                                                                            <ShadcnButton
+                                                                                                size="icon"
+                                                                                                variant="ghost"
+                                                                                                className="h-7 w-7"
+                                                                                                onClick={() =>
+                                                                                                    moveItemMutation.mutate({
+                                                                                                        level: "major",
+                                                                                                        id: major.id,
+                                                                                                        direction: "up",
+                                                                                                    })
+                                                                                                }
+                                                                                            >
+                                                                                                <ArrowUp className="h-4 w-4" />
+                                                                                            </ShadcnButton>
+                                                                                            <ShadcnButton
+                                                                                                size="icon"
+                                                                                                variant="ghost"
+                                                                                                className="h-7 w-7"
+                                                                                                onClick={() =>
+                                                                                                    moveItemMutation.mutate({
+                                                                                                        level: "major",
+                                                                                                        id: major.id,
+                                                                                                        direction: "down",
+                                                                                                    })
+                                                                                                }
+                                                                                            >
+                                                                                                <ArrowDown className="h-4 w-4" />
+                                                                                            </ShadcnButton>
+                                                                                            <ShadcnButton
+                                                                                                size="icon"
+                                                                                                variant="ghost"
+                                                                                                className="h-7 w-7"
+                                                                                                onClick={() =>
+                                                                                                    setEditingItem({ level: "major", id: major.id, name: major.name })
+                                                                                                }
+                                                                                            >
+                                                                                                <Pencil className="h-4 w-4" />
+                                                                                            </ShadcnButton>
+                                                                                            <ShadcnButton
+                                                                                                size="icon"
+                                                                                                variant="ghost"
+                                                                                                className="h-7 w-7 text-destructive"
+                                                                                                onClick={() => deleteItemMutation.mutate({ level: "major", id: major.id })}
+                                                                                            >
+                                                                                                <Trash2 className="h-4 w-4" />
+                                                                                            </ShadcnButton>
+                                                                                        </div>
+                                                                                    </>
+                                                                                )}
+                                                                            </div>
+                                                                        )}
                                                                         <Accordion type="multiple" className="w-full space-y-3">
                                                                             {major.middle_items?.map((middle: TrainingMiddleItem) => (
                                                                                 <AccordionItem key={middle.id} value={`middle-${middle.id}`} className="border rounded-md overflow-hidden bg-background">
@@ -469,13 +780,108 @@ export function TrainingDetailDrawer({ trainingId, open, onOpenChange, initialEd
                                                                                     </AccordionTrigger>
                                                                                     <AccordionContent className="p-0">
                                                                                         <div className="p-3 space-y-2">
+                                                                                            {canEditTasksMode && (
+                                                                                                <div className="flex items-center justify-between rounded-md border bg-muted/30 px-3 py-2">
+                                                                                                    {editingItem && editingItem.level === "middle" && editingItem.id === middle.id ? (
+                                                                                                        <div className="flex w-full items-center gap-2">
+                                                                                                            <Input
+                                                                                                                value={editingItem.name}
+                                                                                                                onChange={(e) =>
+                                                                                                                    setEditingItem((prev) =>
+                                                                                                                        prev && prev.id === middle.id
+                                                                                                                            ? { ...prev, name: e.target.value }
+                                                                                                                            : prev
+                                                                                                                    )
+                                                                                                                }
+                                                                                                            />
+                                                                                                            <ShadcnButton
+                                                                                                                size="sm"
+                                                                                                                onClick={() => updateItemMutation.mutate(editingItem)}
+                                                                                                                disabled={!editingItem.name.trim()}
+                                                                                                            >
+                                                                                                                保存
+                                                                                                            </ShadcnButton>
+                                                                                                            <ShadcnButton size="sm" variant="ghost" onClick={() => setEditingItem(null)}>
+                                                                                                                キャンセル
+                                                                                                            </ShadcnButton>
+                                                                                                        </div>
+                                                                                                    ) : (
+                                                                                                        <>
+                                                                                                            <span className="text-sm font-semibold">{middle.name}</span>
+                                                                                                            <div className="flex items-center gap-1">
+                                                                                                                <ShadcnButton
+                                                                                                                    size="icon"
+                                                                                                                    variant="ghost"
+                                                                                                                    className="h-7 w-7"
+                                                                                                                    onClick={() =>
+                                                                                                                        moveItemMutation.mutate({
+                                                                                                                            level: "middle",
+                                                                                                                            id: middle.id,
+                                                                                                                            direction: "up",
+                                                                                                                        })
+                                                                                                                    }
+                                                                                                                >
+                                                                                                                    <ArrowUp className="h-4 w-4" />
+                                                                                                                </ShadcnButton>
+                                                                                                                <ShadcnButton
+                                                                                                                    size="icon"
+                                                                                                                    variant="ghost"
+                                                                                                                    className="h-7 w-7"
+                                                                                                                    onClick={() =>
+                                                                                                                        moveItemMutation.mutate({
+                                                                                                                            level: "middle",
+                                                                                                                            id: middle.id,
+                                                                                                                            direction: "down",
+                                                                                                                        })
+                                                                                                                    }
+                                                                                                                >
+                                                                                                                    <ArrowDown className="h-4 w-4" />
+                                                                                                                </ShadcnButton>
+                                                                                                                <ShadcnButton
+                                                                                                                    size="icon"
+                                                                                                                    variant="ghost"
+                                                                                                                    className="h-7 w-7"
+                                                                                                                    onClick={() =>
+                                                                                                                        setEditingItem({ level: "middle", id: middle.id, name: middle.name })
+                                                                                                                    }
+                                                                                                                >
+                                                                                                                    <Pencil className="h-4 w-4" />
+                                                                                                                </ShadcnButton>
+                                                                                                                <ShadcnButton
+                                                                                                                    size="icon"
+                                                                                                                    variant="ghost"
+                                                                                                                    className="h-7 w-7 text-destructive"
+                                                                                                                    onClick={() =>
+                                                                                                                        deleteItemMutation.mutate({ level: "middle", id: middle.id })
+                                                                                                                    }
+                                                                                                                >
+                                                                                                                    <Trash2 className="h-4 w-4" />
+                                                                                                                </ShadcnButton>
+                                                                                                            </div>
+                                                                                                        </>
+                                                                                                    )}
+                                                                                                </div>
+                                                                                            )}
                                                                                             {middle.minor_items?.map((minor: TrainingMinorItem) => (
-                                                                                                <div key={minor.id} className="flex items-center justify-between p-2 rounded-md border bg-muted/30">
-                                                                                                    <div className="flex items-center gap-3">
+                                                                                                <div key={minor.id} className="flex items-center justify-between gap-3 p-2 rounded-md border bg-muted/30">
+                                                                                                    <div className="flex flex-1 items-center gap-3">
                                                                                                         <span className="text-xs text-muted-foreground w-4">{minor.sort}.</span>
-                                                                                                        <span className="text-sm">{minor.name}</span>
+                                                                                                        {editingItem && editingItem.level === "minor" && editingItem.id === minor.id ? (
+                                                                                                            <Input
+                                                                                                                value={editingItem.name}
+                                                                                                                onChange={(e) =>
+                                                                                                                    setEditingItem((prev) =>
+                                                                                                                        prev && prev.id === minor.id
+                                                                                                                            ? { ...prev, name: e.target.value }
+                                                                                                                            : prev
+                                                                                                                    )
+                                                                                                                }
+                                                                                                            />
+                                                                                                        ) : (
+                                                                                                            <span className="text-sm">{minor.name}</span>
+                                                                                                        )}
                                                                                                     </div>
-                                                                                                    <div className="flex items-center gap-4">
+                                                                                                    <div className="flex items-center gap-2">
                                                                                                         <StatusBadge status={minor.status} />
                                                                                                         <Select
                                                                                                             value={minor.status}
@@ -492,14 +898,166 @@ export function TrainingDetailDrawer({ trainingId, open, onOpenChange, initialEd
                                                                                                                 <SelectItem value="完了">完了</SelectItem>
                                                                                                             </SelectContent>
                                                                                                         </Select>
+                                                                                                        {canEditTasksMode && (
+                                                                                                            <>
+                                                                                                                {editingItem && editingItem.level === "minor" && editingItem.id === minor.id ? (
+                                                                                                                    <>
+                                                                                                                        <ShadcnButton
+                                                                                                                            size="icon"
+                                                                                                                            variant="ghost"
+                                                                                                                            className="h-7 w-7"
+                                                                                                                            onClick={() => updateItemMutation.mutate(editingItem)}
+                                                                                                                            disabled={!editingItem.name.trim()}
+                                                                                                                        >
+                                                                                                                            <Save className="h-4 w-4" />
+                                                                                                                        </ShadcnButton>
+                                                                                                                        <ShadcnButton
+                                                                                                                            size="icon"
+                                                                                                                            variant="ghost"
+                                                                                                                            className="h-7 w-7"
+                                                                                                                            onClick={() => setEditingItem(null)}
+                                                                                                                        >
+                                                                                                                            <X className="h-4 w-4" />
+                                                                                                                        </ShadcnButton>
+                                                                                                                    </>
+                                                                                                                ) : (
+                                                                                                                    <>
+                                                                                                                        <ShadcnButton
+                                                                                                                            size="icon"
+                                                                                                                            variant="ghost"
+                                                                                                                            className="h-7 w-7"
+                                                                                                                            onClick={() =>
+                                                                                                                                moveItemMutation.mutate({
+                                                                                                                                    level: "minor",
+                                                                                                                                    id: minor.id,
+                                                                                                                                    direction: "up",
+                                                                                                                                })
+                                                                                                                            }
+                                                                                                                        >
+                                                                                                                            <ArrowUp className="h-4 w-4" />
+                                                                                                                        </ShadcnButton>
+                                                                                                                        <ShadcnButton
+                                                                                                                            size="icon"
+                                                                                                                            variant="ghost"
+                                                                                                                            className="h-7 w-7"
+                                                                                                                            onClick={() =>
+                                                                                                                                moveItemMutation.mutate({
+                                                                                                                                    level: "minor",
+                                                                                                                                    id: minor.id,
+                                                                                                                                    direction: "down",
+                                                                                                                                })
+                                                                                                                            }
+                                                                                                                        >
+                                                                                                                            <ArrowDown className="h-4 w-4" />
+                                                                                                                        </ShadcnButton>
+                                                                                                                        <ShadcnButton
+                                                                                                                            size="icon"
+                                                                                                                            variant="ghost"
+                                                                                                                            className="h-7 w-7"
+                                                                                                                            onClick={() =>
+                                                                                                                                setEditingItem({ level: "minor", id: minor.id, name: minor.name })
+                                                                                                                            }
+                                                                                                                        >
+                                                                                                                            <Pencil className="h-4 w-4" />
+                                                                                                                        </ShadcnButton>
+                                                                                                                        <ShadcnButton
+                                                                                                                            size="icon"
+                                                                                                                            variant="ghost"
+                                                                                                                            className="h-7 w-7 text-destructive"
+                                                                                                                            onClick={() =>
+                                                                                                                                deleteItemMutation.mutate({ level: "minor", id: minor.id })
+                                                                                                                            }
+                                                                                                                        >
+                                                                                                                            <Trash2 className="h-4 w-4" />
+                                                                                                                        </ShadcnButton>
+                                                                                                                    </>
+                                                                                                                )}
+                                                                                                            </>
+                                                                                                        )}
                                                                                                     </div>
                                                                                                 </div>
                                                                                             ))}
+                                                                                            {canEditTasksMode && (
+                                                                                                <div className="flex justify-end">
+                                                                                                    {addingItem && addingItem.level === "minor" && addingItem.parentId === middle.id ? (
+                                                                                                        <div className="flex w-full items-center gap-2 rounded-md border bg-background p-2">
+                                                                                                            <Input
+                                                                                                                value={addingItem.name}
+                                                                                                                onChange={(e) => setAddingItem({ ...addingItem, name: e.target.value })}
+                                                                                                                placeholder="小項目名を入力"
+                                                                                                            />
+                                                                                                            <ShadcnButton
+                                                                                                                size="sm"
+                                                                                                                onClick={() => createItemMutation.mutate(addingItem)}
+                                                                                                                disabled={!addingItem.name.trim()}
+                                                                                                            >
+                                                                                                                追加
+                                                                                                            </ShadcnButton>
+                                                                                                            <ShadcnButton size="sm" variant="ghost" onClick={() => setAddingItem(null)}>
+                                                                                                                キャンセル
+                                                                                                            </ShadcnButton>
+                                                                                                        </div>
+                                                                                                    ) : (
+                                                                                                        <ShadcnButton
+                                                                                                            size="sm"
+                                                                                                            variant="outline"
+                                                                                                            onClick={() =>
+                                                                                                                setAddingItem({
+                                                                                                                    level: "minor",
+                                                                                                                    parentId: middle.id,
+                                                                                                                    name: "",
+                                                                                                                })
+                                                                                                            }
+                                                                                                        >
+                                                                                                            <Plus className="mr-2 h-4 w-4" />
+                                                                                                            小項目追加
+                                                                                                        </ShadcnButton>
+                                                                                                    )}
+                                                                                                </div>
+                                                                                            )}
                                                                                         </div>
                                                                                     </AccordionContent>
                                                                                 </AccordionItem>
                                                                             ))}
                                                                         </Accordion>
+                                                                        {canEditTasksMode && (
+                                                                            <div className="flex justify-end">
+                                                                                {addingItem && addingItem.level === "middle" && addingItem.parentId === major.id ? (
+                                                                                    <div className="flex w-full items-center gap-2 rounded-md border bg-background p-2">
+                                                                                        <Input
+                                                                                            value={addingItem.name}
+                                                                                            onChange={(e) => setAddingItem({ ...addingItem, name: e.target.value })}
+                                                                                            placeholder="中項目名を入力"
+                                                                                        />
+                                                                                        <ShadcnButton
+                                                                                            size="sm"
+                                                                                            onClick={() => createItemMutation.mutate(addingItem)}
+                                                                                            disabled={!addingItem.name.trim()}
+                                                                                        >
+                                                                                            追加
+                                                                                        </ShadcnButton>
+                                                                                        <ShadcnButton size="sm" variant="ghost" onClick={() => setAddingItem(null)}>
+                                                                                            キャンセル
+                                                                                        </ShadcnButton>
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <ShadcnButton
+                                                                                        size="sm"
+                                                                                        variant="outline"
+                                                                                        onClick={() =>
+                                                                                            setAddingItem({
+                                                                                                level: "middle",
+                                                                                                parentId: major.id,
+                                                                                                name: "",
+                                                                                            })
+                                                                                        }
+                                                                                    >
+                                                                                        <Plus className="mr-2 h-4 w-4" />
+                                                                                        中項目追加
+                                                                                    </ShadcnButton>
+                                                                                )}
+                                                                            </div>
+                                                                        )}
                                                                     </div>
                                                                 </AccordionContent>
                                                             </AccordionItem>
@@ -507,6 +1065,8 @@ export function TrainingDetailDrawer({ trainingId, open, onOpenChange, initialEd
                                                     })}
                                                 </Accordion>
                                             </div>
+                                                )}
+                                            </>
                                         )}
                                     </TabsContent>
 
