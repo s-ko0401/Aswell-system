@@ -219,13 +219,13 @@ docker compose exec backend php artisan migrate
 - API ヘルスチェック：`GET /api/health`
 
 ## 7. 開発フロー規則
-### 7.1 Branch 規則
+### 7.1 Branch 規則（おすすめ、強制ではない）
 - main：デプロイ可能状態
 - develop：統合ブランチ（チームで採用する場合）
 - feature ブランチ：`feature/[ticket]-short-title`
 - fix ブランチ：`fix/[ticket]-short-title`
 
-### 7.2 Commit 規則（推奨）
+### 7.2 Commit 規則（おすすめ、強制ではない）
 - `feat:` 新機能
 - `fix:` バグ修正
 - `refactor:` リファクタリング

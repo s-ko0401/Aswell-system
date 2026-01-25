@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Auth\AuthLogController;
+use App\Http\Controllers\Calendars\CalendarGroupController;
 use App\Http\Controllers\Calendars\CompanyCalendarController;
 use App\Http\Controllers\Integrations\GoogleCalendarAclController;
 use App\Http\Controllers\Integrations\GoogleIntegrationController;
@@ -92,6 +93,13 @@ Route::middleware('auth:api')->group(function () {
         Route::get('/calendars/company', [CompanyCalendarController::class, 'index']);
         Route::get('/calendars/company/events/{eventId}', [CompanyCalendarController::class, 'showEvent']);
         Route::post('/calendars/company/refresh', [CompanyCalendarController::class, 'refresh']);
+
+        // Calendar Groups
+        Route::get('/calendar-groups', [CalendarGroupController::class, 'index']);
+        Route::post('/calendar-groups', [CalendarGroupController::class, 'store']);
+        Route::put('/calendar-groups/{id}', [CalendarGroupController::class, 'update']);
+        Route::put('/calendar-groups/{id}/members', [CalendarGroupController::class, 'updateMembers']);
+        Route::delete('/calendar-groups/{id}', [CalendarGroupController::class, 'destroy']);
     });
 });
 

@@ -29,7 +29,18 @@ import {
     type CompanyCalendarResponse,
     type UserCalendar,
 } from "../../api/calendar";
+import {
+    createCalendarGroup,
+    deleteCalendarGroup,
+    getCalendarGroups,
+    updateCalendarGroupMembers,
+    updateCalendarGroupName,
+    type CalendarGroup,
+    type CalendarGroupsResponse,
+} from "../../api/calendarGroups";
+import { getUsersSelection } from "../../api/users";
 import { useAuth } from "../../hooks/useAuth";
+import { useToast } from "../../hooks/use-toast";
 import {
     Card,
     CardContent,
@@ -61,6 +72,7 @@ import { Spinner } from "../../components/ui/spinner";
 
 export const CalendarPage: React.FC = () => {
     const { data: me } = useAuth();
+    const { toast } = useToast();
     const isLoggedIn = Boolean(me?.email);
     const [viewMode, setViewMode] = React.useState<"day" | "week">("day");
     const queryClient = useQueryClient();
@@ -74,6 +86,14 @@ export const CalendarPage: React.FC = () => {
     const [selectedMemberIds, setSelectedMemberIds] = React.useState<Set<string>>(new Set());
     const [memberSearch, setMemberSearch] = React.useState("");
     const shouldResetMemberSelection = React.useRef(true);
+    const [activeGroupId, setActiveGroupId] = React.useState<number | "all" | null>(null);
+    const [isGroupManagerOpen, setIsGroupManagerOpen] = React.useState(false);
+    const [newGroupName, setNewGroupName] = React.useState("");
+    const [editingGroupId, setEditingGroupId] = React.useState<number | null>(null);
+    const [editingGroupName, setEditingGroupName] = React.useState("");
+    const [memberEditorGroupId, setMemberEditorGroupId] = React.useState<number | null>(null);
+    const [memberEditorSelection, setMemberEditorSelection] = React.useState<Set<string>>(new Set());
+    const [memberEditorSearch, setMemberEditorSearch] = React.useState("");
     const lastAutoRefreshKey = React.useRef<string | null>(null);
     const lastMemberAutoRefreshKey = React.useRef<string | null>(null);
     const [isMemberCalendarOpen, setIsMemberCalendarOpen] = React.useState(false);
@@ -156,6 +176,23 @@ export const CalendarPage: React.FC = () => {
             query.state.data?.status === "refreshing" ? 30000 : false,
     });
 
+    const membersQuery = useQuery<
+        { success: boolean; data: { id: number; username: string; email: string; role: number }[]; message: string },
+        Error
+    >({
+        queryKey: ["usersSelection"],
+        queryFn: () => getUsersSelection(),
+        enabled: isLoggedIn,
+        staleTime: 5 * 60_000,
+    });
+
+    const calendarGroupsQuery = useQuery<CalendarGroupsResponse, Error>({
+        queryKey: ["calendarGroups"],
+        queryFn: () => getCalendarGroups(),
+        enabled: isLoggedIn,
+        staleTime: 5 * 60_000,
+    });
+
     const memberCalendarQuery = useQuery<CompanyCalendarResponse, Error>({
         queryKey: [
             "memberCalendar",
@@ -209,6 +246,90 @@ export const CalendarPage: React.FC = () => {
         onSuccess: () => {
             queryClient.invalidateQueries({
                 queryKey: ["companyCalendar"],
+            });
+        },
+    });
+
+    const createGroupMutation = useMutation({
+        mutationFn: (name: string) => createCalendarGroup(name),
+        onSuccess: () => {
+            setNewGroupName("");
+            queryClient.invalidateQueries({ queryKey: ["calendarGroups"] });
+            toast({
+                title: "グループを作成しました",
+            });
+        },
+        onError: () => {
+            toast({
+                variant: "destructive",
+                title: "作成に失敗しました",
+                description: "同じ名前のグループがある可能性があります。",
+            });
+        },
+    });
+
+    const updateGroupNameMutation = useMutation({
+        mutationFn: (payload: { id: number; name: string }) =>
+            updateCalendarGroupName(payload.id, payload.name),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["calendarGroups"] });
+            setEditingGroupId(null);
+            setEditingGroupName("");
+            toast({
+                title: "グループ名を更新しました",
+            });
+        },
+        onError: () => {
+            toast({
+                variant: "destructive",
+                title: "更新に失敗しました",
+                description: "同じ名前のグループがある可能性があります。",
+            });
+        },
+    });
+
+    const updateGroupMembersMutation = useMutation({
+        mutationFn: (payload: { id: number; memberUserIds: number[] }) =>
+            updateCalendarGroupMembers(payload.id, payload.memberUserIds),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["calendarGroups"] });
+            if (memberEditorGroupId && activeGroupId === memberEditorGroupId) {
+                setSelectedMemberIds(new Set(memberEditorSelection));
+                setActiveGroupId(memberEditorGroupId);
+            }
+            setMemberEditorGroupId(null);
+            toast({
+                title: "グループのメンバーを更新しました",
+            });
+        },
+        onError: () => {
+            toast({
+                variant: "destructive",
+                title: "更新に失敗しました",
+                description: "もう一度お試しください。",
+            });
+        },
+    });
+
+    const deleteGroupMutation = useMutation({
+        mutationFn: (id: number) => deleteCalendarGroup(id),
+        onSuccess: (_, id) => {
+            queryClient.invalidateQueries({ queryKey: ["calendarGroups"] });
+            if (activeGroupId === id) {
+                setActiveGroupId(null);
+            }
+            if (memberEditorGroupId === id) {
+                setMemberEditorGroupId(null);
+            }
+            toast({
+                title: "グループを削除しました",
+            });
+        },
+        onError: () => {
+            toast({
+                variant: "destructive",
+                title: "削除に失敗しました",
+                description: "もう一度お試しください。",
             });
         },
     });
@@ -293,6 +414,16 @@ export const CalendarPage: React.FC = () => {
     ]);
 
     const calendars: UserCalendar[] = data?.calendars ?? [];
+    const memberOptions = React.useMemo<UserCalendar["user"][]>(() => {
+        const list = membersQuery.data?.data ?? [];
+        return list.map((user) => ({
+            id: user.id,
+            email: user.email,
+            username: user.username,
+            role: typeof user.role === "number" ? user.role : null,
+        }));
+    }, [membersQuery.data?.data]);
+    const calendarGroups = calendarGroupsQuery.data?.groups ?? [];
     const isBusy = isLoading || isFetching;
     const isCalendarRefreshing =
         refreshMutation.isPending || data?.status === "refreshing";
@@ -386,36 +517,35 @@ export const CalendarPage: React.FC = () => {
         return map;
     }, [filteredMemberEvents]);
 
-    const sortedCalendars = React.useMemo(() => {
-        const myEmail = me?.email?.toLowerCase();
-        const roomNames = new Set(["名古屋会議室（大）", "名古屋会議室（小）"]);
+    const roomNames = React.useMemo(
+        () => new Set(["名古屋会議室（大）", "名古屋会議室（小）"]),
+        []
+    );
 
-        const isRoom = (calendar: UserCalendar) =>
-            calendar.user.username &&
-            roomNames.has(calendar.user.username);
-
-        return [...calendars].sort((a, b) => {
+    const sortMembers = React.useCallback(
+        (a: UserCalendar["user"], b: UserCalendar["user"]) => {
+            const myEmail = me?.email?.toLowerCase();
             if (myEmail) {
-                const isMeA = a.user.email?.toLowerCase() === myEmail;
-                const isMeB = b.user.email?.toLowerCase() === myEmail;
+                const isMeA = a.email?.toLowerCase() === myEmail;
+                const isMeB = b.email?.toLowerCase() === myEmail;
                 if (isMeA && !isMeB) return -1;
                 if (!isMeA && isMeB) return 1;
             }
 
-            const isRoomA = isRoom(a);
-            const isRoomB = isRoom(b);
+            const isRoomA = a.username && roomNames.has(a.username);
+            const isRoomB = b.username && roomNames.has(b.username);
             if (isRoomA && !isRoomB) return -1;
             if (!isRoomA && isRoomB) return 1;
 
-            const roleA = typeof a.user.role === "number" ? a.user.role : 999;
-            const roleB = typeof b.user.role === "number" ? b.user.role : 999;
+            const roleA = typeof a.role === "number" ? a.role : 999;
+            const roleB = typeof b.role === "number" ? b.role : 999;
 
             if (roleA !== roleB) {
                 return roleA - roleB;
             }
 
-            const nameA = (a.user.username || a.user.email || "").toLowerCase();
-            const nameB = (b.user.username || b.user.email || "").toLowerCase();
+            const nameA = (a.username || a.email || "").toLowerCase();
+            const nameB = (b.username || b.email || "").toLowerCase();
             const nameCompare = nameA.localeCompare(nameB, "en", {
                 sensitivity: "base",
             });
@@ -424,21 +554,36 @@ export const CalendarPage: React.FC = () => {
                 return nameCompare;
             }
 
-            const emailA = (a.user.email || "").toLowerCase();
-            const emailB = (b.user.email || "").toLowerCase();
+            const emailA = (a.email || "").toLowerCase();
+            const emailB = (b.email || "").toLowerCase();
             return emailA.localeCompare(emailB, "en", { sensitivity: "base" });
-        });
-    }, [calendars, me?.email]);
+        },
+        [me?.email, roomNames]
+    );
+
+    const sortedCalendars = React.useMemo(
+        () => [...calendars].sort((a, b) => sortMembers(a.user, b.user)),
+        [calendars, sortMembers]
+    );
+
+    const sortedMembers = React.useMemo(
+        () => [...memberOptions].sort(sortMembers),
+        [memberOptions, sortMembers]
+    );
 
     const availableMemberIds = React.useMemo(
-        () => new Set(sortedCalendars.map((calendar) => String(calendar.user.id))),
-        [sortedCalendars]
+        () => new Set(sortedMembers.map((member) => String(member.id))),
+        [sortedMembers]
     );
 
     React.useEffect(() => {
+        if (availableMemberIds.size === 0) {
+            return;
+        }
         if (shouldResetMemberSelection.current && availableMemberIds.size > 0) {
             setSelectedMemberIds(new Set(availableMemberIds));
             shouldResetMemberSelection.current = false;
+            setActiveGroupId("all");
             return;
         }
 
@@ -449,10 +594,6 @@ export const CalendarPage: React.FC = () => {
             return next.size === prev.size ? prev : next;
         });
     }, [availableMemberIds]);
-
-    React.useEffect(() => {
-        shouldResetMemberSelection.current = true;
-    }, [viewMode]);
 
     const filteredCalendars = React.useMemo(() => {
         if (selectedMemberIds.size === 0) {
@@ -489,12 +630,108 @@ export const CalendarPage: React.FC = () => {
         [filterEventsBySource, visibleCalendars]
     );
 
+    const normalizedMemberEditorSearch = memberEditorSearch
+        .trim()
+        .toLowerCase();
+    const visibleMemberEditorOptions = React.useMemo(() => {
+        if (!normalizedMemberEditorSearch) {
+            return sortedMembers;
+        }
+        const tokens = normalizedMemberEditorSearch
+            .split(/\s+/)
+            .filter(Boolean);
+        if (tokens.length === 0) {
+            return sortedMembers;
+        }
+
+        return sortedMembers.filter((member) => {
+            const label = `${member.username ?? ""} ${member.email ?? ""}`
+                .toLowerCase();
+            return tokens.every((token) => label.includes(token));
+        });
+    }, [normalizedMemberEditorSearch, sortedMembers]);
+
     const selectedCount = selectedMemberIds.size;
     const hasCalendars = calendars.length > 0;
     const hasVisibleCalendars = visibleCalendars.length > 0;
+    const memberEditorSelectedCount = memberEditorSelection.size;
+    const memberEditorGroup = calendarGroups.find(
+        (group) => group.id === memberEditorGroupId
+    );
+
+    const selectAllMembers = React.useCallback(() => {
+        setSelectedMemberIds(new Set(availableMemberIds));
+        setActiveGroupId("all");
+    }, [availableMemberIds]);
+
+    const clearAllMembers = React.useCallback(() => {
+        setSelectedMemberIds(new Set());
+        setActiveGroupId(null);
+    }, []);
+
+    const applyGroupSelection = React.useCallback((group: CalendarGroup) => {
+        setSelectedMemberIds(
+            new Set(group.member_user_ids.map((id) => String(id)))
+        );
+        setActiveGroupId(group.id);
+    }, []);
 
     const toggleMember = (memberId: string) => {
+        setActiveGroupId(null);
         setSelectedMemberIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(memberId)) {
+                next.delete(memberId);
+            } else {
+                next.add(memberId);
+            }
+            return next;
+        });
+    };
+
+    const handleCreateGroup = () => {
+        const name = newGroupName.trim();
+        if (!name) {
+            return;
+        }
+        createGroupMutation.mutate(name);
+    };
+
+    const startEditGroupName = (group: CalendarGroup) => {
+        setEditingGroupId(group.id);
+        setEditingGroupName(group.name);
+    };
+
+    const handleSaveGroupName = (groupId: number) => {
+        const name = editingGroupName.trim();
+        if (!name) {
+            return;
+        }
+        updateGroupNameMutation.mutate({ id: groupId, name });
+    };
+
+    const handleEditGroupMembers = (group: CalendarGroup) => {
+        setMemberEditorGroupId(group.id);
+        setMemberEditorSelection(
+            new Set(group.member_user_ids.map((id) => String(id)))
+        );
+        setMemberEditorSearch("");
+    };
+
+    const handleSaveGroupMembers = () => {
+        if (!memberEditorGroupId) {
+            return;
+        }
+        updateGroupMembersMutation.mutate({
+            id: memberEditorGroupId,
+            memberUserIds: Array.from(memberEditorSelection).map((id) =>
+                Number(id)
+            ),
+        });
+    };
+
+    const toggleMemberInGroupEditor = (memberId: string) => {
+        setMemberEditorSelection((prev) => {
             const next = new Set(prev);
             if (next.has(memberId)) {
                 next.delete(memberId);
@@ -674,11 +911,7 @@ export const CalendarPage: React.FC = () => {
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
-                                                onClick={() =>
-                                                    setSelectedMemberIds(
-                                                        new Set(availableMemberIds)
-                                                    )
-                                                }
+                                                onClick={selectAllMembers}
                                                 disabled={availableMemberIds.size === 0}
                                             >
                                                 全て選択
@@ -686,9 +919,7 @@ export const CalendarPage: React.FC = () => {
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
-                                                onClick={() =>
-                                                    setSelectedMemberIds(new Set())
-                                                }
+                                                onClick={clearAllMembers}
                                                 disabled={availableMemberIds.size === 0}
                                             >
                                                 全て解除
@@ -697,7 +928,7 @@ export const CalendarPage: React.FC = () => {
                                     </div>
                                 </DialogHeader>
                                 <div className="flex-1 overflow-auto px-6 py-4">
-                                    {sortedCalendars.length === 0 ? (
+                                    {sortedMembers.length === 0 ? (
                                         <div className="py-6 text-sm text-muted-foreground">
                                             データがありません。
                                         </div>
@@ -712,9 +943,9 @@ export const CalendarPage: React.FC = () => {
                                                     "repeat(10, minmax(72px, auto))",
                                             }}
                                         >
-                                            {sortedCalendars.map((calendar) => {
+                                            {sortedMembers.map((member) => {
                                                 const memberId = String(
-                                                    calendar.user.id
+                                                    member.id
                                                 );
                                                 const isChecked =
                                                     selectedMemberIds.has(memberId);
@@ -743,14 +974,12 @@ export const CalendarPage: React.FC = () => {
                                                             />
                                                             <div className="min-w-0">
                                                                 <div className="font-medium break-words leading-tight">
-                                                                    {calendar
-                                                                        .user
+                                                                    {member
                                                                         .username ||
                                                                         "No Name"}
                                                                 </div>
                                                                 <div className="text-[10px] text-muted-foreground break-words leading-tight">
-                                                                    {calendar
-                                                                        .user
+                                                                    {member
                                                                         .email}
                                                                 </div>
                                                             </div>
@@ -843,6 +1072,366 @@ export const CalendarPage: React.FC = () => {
                             )}
                         </div>
                     </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                            type="button"
+                            variant={activeGroupId === "all" ? "default" : "outline"}
+                            size="sm"
+                            onClick={selectAllMembers}
+                            disabled={availableMemberIds.size === 0}
+                        >
+                            全員
+                        </Button>
+                        {calendarGroups.map((group) => (
+                            <Button
+                                key={group.id}
+                                type="button"
+                                variant={activeGroupId === group.id ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => applyGroupSelection(group)}
+                            >
+                                {group.name}
+                            </Button>
+                        ))}
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setIsGroupManagerOpen(true)}
+                        >
+                            グループ管理
+                        </Button>
+                    </div>
+                    <Dialog
+                        open={isGroupManagerOpen}
+                        onOpenChange={(open) => {
+                            setIsGroupManagerOpen(open);
+                            if (!open) {
+                                setEditingGroupId(null);
+                                setEditingGroupName("");
+                                setNewGroupName("");
+                            }
+                        }}
+                    >
+                        <DialogContent className="flex max-h-[85vh] w-[95vw] max-w-4xl flex-col gap-0 p-0">
+                            <DialogHeader className="border-b px-6 py-4 text-left">
+                                <DialogTitle>グループ管理</DialogTitle>
+                                <DialogDescription className="text-xs">
+                                    メンバーのグループを作成・編集できます。
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div className="flex-1 overflow-auto px-6 py-4">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <Input
+                                        value={newGroupName}
+                                        onChange={(event) =>
+                                            setNewGroupName(event.target.value)
+                                        }
+                                        placeholder="新しいグループ名"
+                                        className="h-9 max-w-xs text-sm"
+                                    />
+                                    <Button
+                                        size="sm"
+                                        onClick={handleCreateGroup}
+                                        disabled={
+                                            createGroupMutation.isPending ||
+                                            newGroupName.trim().length === 0
+                                        }
+                                    >
+                                        追加
+                                    </Button>
+                                </div>
+
+                                <div className="mt-4 space-y-3">
+                                    {calendarGroups.length === 0 ? (
+                                        <div className="py-6 text-sm text-muted-foreground">
+                                            グループはまだありません。
+                                        </div>
+                                    ) : (
+                                        calendarGroups.map((group) => {
+                                            const isEditingName =
+                                                editingGroupId === group.id;
+                                            return (
+                                                <div
+                                                    key={group.id}
+                                                    className="rounded-md border p-3"
+                                                >
+                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                                        <div className="min-w-[180px]">
+                                                            {isEditingName ? (
+                                                                <Input
+                                                                    value={editingGroupName}
+                                                                    onChange={(event) =>
+                                                                        setEditingGroupName(
+                                                                            event.target.value
+                                                                        )
+                                                                    }
+                                                                    className="h-8 text-sm"
+                                                                />
+                                                            ) : (
+                                                                <div className="font-medium">
+                                                                    {group.name}
+                                                                </div>
+                                                            )}
+                                                            <div className="text-xs text-muted-foreground">
+                                                                メンバー数：
+                                                                {
+                                                                    group
+                                                                        .member_user_ids
+                                                                        .length
+                                                                }
+                                                                人
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            {isEditingName ? (
+                                                                <>
+                                                                    <Button
+                                                                        size="sm"
+                                                                        onClick={() =>
+                                                                            handleSaveGroupName(
+                                                                                group.id
+                                                                            )
+                                                                        }
+                                                                        disabled={
+                                                                            updateGroupNameMutation.isPending
+                                                                        }
+                                                                    >
+                                                                        保存
+                                                                    </Button>
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        onClick={() => {
+                                                                            setEditingGroupId(
+                                                                                null
+                                                                            );
+                                                                            setEditingGroupName(
+                                                                                ""
+                                                                            );
+                                                                        }}
+                                                                    >
+                                                                        キャンセル
+                                                                    </Button>
+                                                                </>
+                                                            ) : (
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    onClick={() =>
+                                                                        startEditGroupName(
+                                                                            group
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    名前変更
+                                                                </Button>
+                                                            )}
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    handleEditGroupMembers(
+                                                                        group
+                                                                    )
+                                                                }
+                                                            >
+                                                                メンバー編集
+                                                            </Button>
+                                                            <Button
+                                                                variant="destructive"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    deleteGroupMutation.mutate(
+                                                                        group.id
+                                                                    )
+                                                                }
+                                                                disabled={
+                                                                    deleteGroupMutation.isPending
+                                                                }
+                                                            >
+                                                                削除
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            </div>
+                            <DialogFooter className="border-t px-6 py-3">
+                                <DialogClose asChild>
+                                    <Button variant="outline" size="sm">
+                                        閉じる
+                                    </Button>
+                                </DialogClose>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                    <Dialog
+                        open={Boolean(memberEditorGroupId)}
+                        onOpenChange={(open) => {
+                            if (!open) {
+                                setMemberEditorGroupId(null);
+                            }
+                        }}
+                    >
+                        <DialogContent className="flex h-[85vh] w-[95vw] max-w-6xl flex-col gap-0 p-0">
+                            <DialogHeader className="border-b px-6 py-4 text-left">
+                                <DialogTitle>
+                                    {memberEditorGroup?.name ?? "グループ"}のメンバー編集
+                                </DialogTitle>
+                                <DialogDescription className="text-xs">
+                                    表示するメンバーを選択してください。
+                                </DialogDescription>
+                                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                                    <span>
+                                        選択中：
+                                        {memberEditorSelectedCount === 0
+                                            ? "なし"
+                                            : `${memberEditorSelectedCount}人`}
+                                    </span>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() =>
+                                                setMemberEditorSelection(
+                                                    new Set(availableMemberIds)
+                                                )
+                                            }
+                                            disabled={
+                                                availableMemberIds.size === 0
+                                            }
+                                        >
+                                            全て選択
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() =>
+                                                setMemberEditorSelection(
+                                                    new Set()
+                                                )
+                                            }
+                                            disabled={
+                                                availableMemberIds.size === 0
+                                            }
+                                        >
+                                            全て解除
+                                        </Button>
+                                    </div>
+                                </div>
+                            </DialogHeader>
+                            <div className="flex-1 overflow-auto px-6 py-4">
+                                <div className="mb-3 flex items-center gap-2">
+                                    <Input
+                                        value={memberEditorSearch}
+                                        onChange={(event) =>
+                                            setMemberEditorSearch(
+                                                event.target.value
+                                            )
+                                        }
+                                        placeholder="メンバー検索"
+                                        className="h-8 w-[200px] text-sm"
+                                    />
+                                    {memberEditorSearch && (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() =>
+                                                setMemberEditorSearch("")
+                                            }
+                                        >
+                                            クリア
+                                        </Button>
+                                    )}
+                                </div>
+                                {sortedMembers.length === 0 ? (
+                                    <div className="py-6 text-sm text-muted-foreground">
+                                        データがありません。
+                                    </div>
+                                ) : (
+                                    <div
+                                        className="grid gap-2"
+                                        style={{
+                                            gridAutoFlow: "column",
+                                            gridAutoColumns:
+                                                "minmax(140px, 1fr)",
+                                            gridTemplateRows:
+                                                "repeat(10, minmax(72px, auto))",
+                                        }}
+                                    >
+                                        {visibleMemberEditorOptions.map(
+                                            (member) => {
+                                                const memberId = String(
+                                                    member.id
+                                                );
+                                                const isChecked =
+                                                    memberEditorSelection.has(
+                                                        memberId
+                                                    );
+
+                                                return (
+                                                    <label
+                                                        key={memberId}
+                                                        className={`flex cursor-pointer flex-col gap-1 rounded-md border px-2 py-2 text-xs transition ${
+                                                            isChecked
+                                                                ? "border-primary/40 bg-primary/5"
+                                                                : "hover:bg-accent"
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-start gap-2">
+                                                            <input
+                                                                type="checkbox"
+                                                                className="mt-0.5 h-4 w-4"
+                                                                checked={
+                                                                    isChecked
+                                                                }
+                                                                onChange={() =>
+                                                                    toggleMemberInGroupEditor(
+                                                                        memberId
+                                                                    )
+                                                                }
+                                                            />
+                                                            <div className="min-w-0">
+                                                                <div className="font-medium break-words leading-tight">
+                                                                    {member.username ||
+                                                                        "No Name"}
+                                                                </div>
+                                                                <div className="text-[10px] text-muted-foreground break-words leading-tight">
+                                                                    {member.email}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </label>
+                                                );
+                                            }
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                            <DialogFooter className="border-t px-6 py-3">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setMemberEditorGroupId(null)}
+                                >
+                                    キャンセル
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    onClick={handleSaveGroupMembers}
+                                    disabled={
+                                        updateGroupMembersMutation.isPending
+                                    }
+                                >
+                                    保存
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
 
                     {!isLoggedIn && (
                         <p className="text-muted-foreground">
