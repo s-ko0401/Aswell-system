@@ -36,7 +36,10 @@ class UserService
 
     public function selection(): JsonResponse
     {
-        $users = User::query()->orderBy('username')->get(['id', 'username']);
+        $users = User::query()
+            ->whereNotNull('email')
+            ->orderBy('username')
+            ->get(['id', 'username', 'email', 'role']);
 
         return response()->json([
             'success' => true,
