@@ -4,14 +4,23 @@ import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import api from "@/lib/api";
 import { tokenStorage } from "@/lib/auth";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Spinner } from "@/components/ui/spinner";
+import AppLogoIcon from "@/components/icons/AppLogo";
+import { ModeToggle } from "@/components/mode-toggle";
 
 const schema = z.object({
   loginid: z.string().min(1, "ログインIDを入力してください"),
@@ -68,38 +77,52 @@ export function LoginPage() {
     },
   });
 
-  const onSubmit = form.handleSubmit((values) => {
-    mutation.mutate(values);
-  });
+  const onSubmit = form.handleSubmit(
+    (values) => {
+      mutation.mutate(values);
+    },
+    (errors) => {
+      Object.values(errors).forEach((error) => {
+        if (error && error.message) {
+          toast({
+            variant: "destructive",
+            title: "入力エラー",
+            description: error.message,
+          });
+        }
+      });
+    },
+  );
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-6">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
+      <Card className="w-full max-w-sm relative mt-8">
+        <div className="absolute -top-8 left-1/2 -translate-x-1/2 inline-flex items-center justify-center rounded-lg bg-primary p-3 shadow-sm border">
+          <AppLogoIcon className="h-8 w-8 fill-secondary" />
+        </div>
+        <CardHeader className="text-center pt-16">
           <CardTitle>ログイン</CardTitle>
-          <CardDescription>管理者アカウントでログインしてください。</CardDescription>
+          <CardDescription>
+            管理者アカウントでログインしてください。
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={onSubmit}>
             <div className="space-y-2">
               <Label htmlFor="loginid">ログインID</Label>
               <Input id="loginid" {...form.register("loginid")} />
-              {form.formState.errors.loginid && (
-                <p className="text-xs text-destructive">{form.formState.errors.loginid.message}</p>
-              )}
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="password">パスワード</Label>
-              <Input id="password" type="password" {...form.register("password")} />
-              {form.formState.errors.password && (
-                <p className="text-xs text-destructive">{form.formState.errors.password.message}</p>
-              )}
+              <PasswordInput id="password" {...form.register("password")} />
             </div>
 
-            {mutation.isError && <p className="text-sm text-destructive">ID またはパスワードが違います</p>}
-
-            <Button className="w-full" type="submit" disabled={mutation.isPending}>
+            <Button
+              className="w-full"
+              type="submit"
+              disabled={mutation.isPending}
+            >
               {mutation.isPending ? (
                 <>
                   <Spinner className="mr-2 h-4 w-4" />
@@ -112,6 +135,9 @@ export function LoginPage() {
           </form>
         </CardContent>
       </Card>
+      <div className="absolute bottom-4 left-4">
+        <ModeToggle />
+      </div>
     </div>
   );
 }
