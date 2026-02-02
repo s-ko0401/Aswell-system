@@ -3,7 +3,7 @@ import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
-import { Edit, MoreVertical, Plus, Trash2, Shield } from "lucide-react";
+import { Edit, MoreVertical, Plus, Trash2, Shield, Search } from "lucide-react";
 import AppLogoIcon from "@/components/icons/AppLogo";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -62,6 +62,7 @@ import {
   normalizePagePermissions,
   type PagePermissionKey,
 } from "@/lib/pagePermissions";
+import { useDebounce } from "@/hooks/useDebounce";
 import {
   USER_ROLE_LABELS,
   USER_ROLE_OPTIONS,
@@ -139,6 +140,8 @@ export function UsersPage() {
   const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedRole, setSelectedRole] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 500);
   const perPage = 20;
   const isEditMode = editingUserId !== null;
   const isAdmin = currentUser?.role === UserRole.SYSTEM_ADMIN;
@@ -157,13 +160,14 @@ export function UsersPage() {
   });
 
   const usersQuery = useQuery({
-    queryKey: ["users", currentPage, selectedRole],
+    queryKey: ["users", currentPage, selectedRole, debouncedSearchQuery],
     queryFn: async () => {
       const { data } = await api.get("/users", {
         params: {
           page: currentPage,
           per_page: perPage,
           role: selectedRole === "all" ? undefined : selectedRole,
+          search: debouncedSearchQuery || undefined,
         },
       });
       return {
@@ -584,30 +588,45 @@ export function UsersPage() {
           <div className="flex flex-col gap-4">
             <CardTitle className="text-lg">ユーザー一覧</CardTitle>
             <div className="flex items-center justify-between">
-              <Tabs
-                value={selectedRole}
-                onValueChange={(val) => {
-                  setSelectedRole(val);
-                  setCurrentPage(1);
-                }}
-              >
-                <TabsList>
-                  <TabsTrigger value="all">
-                    全ユーザー
-                    <Badge variant="secondary" className="ml-2">
-                      {allCount}
-                    </Badge>
-                  </TabsTrigger>
-                  {USER_ROLE_OPTIONS.map((option) => (
-                    <TabsTrigger key={option.value} value={option.value}>
-                      {option.label}
+              <div className="flex items-center gap-4 justify-between w-full">
+                <Tabs
+                  value={selectedRole}
+                  onValueChange={(val) => {
+                    setSelectedRole(val);
+                    setCurrentPage(1);
+                  }}
+                >
+                  <TabsList>
+                    <TabsTrigger value="all">
+                      全ユーザー
                       <Badge variant="secondary" className="ml-2">
-                        {getRoleCount(Number(option.value))}
+                        {allCount}
                       </Badge>
                     </TabsTrigger>
-                  ))}
-                </TabsList>
-              </Tabs>
+                    {USER_ROLE_OPTIONS.map((option) => (
+                      <TabsTrigger key={option.value} value={option.value}>
+                        {option.label}
+                        <Badge variant="secondary" className="ml-2">
+                          {getRoleCount(Number(option.value))}
+                        </Badge>
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </Tabs>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="search"
+                    placeholder="ユーザー名で検索..."
+                    className="w-[250px] pl-9 bg-background"
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                  />
+                </div>
+              </div>
 
               {/* Pagination Controls */}
               {totalPages > 1 && (

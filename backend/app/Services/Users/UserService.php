@@ -19,6 +19,7 @@ class UserService
 
         $paginator = User::query()
             ->when($request->query('role'), fn($q, $role) => $q->where('role', $role))
+            ->when($request->query('search'), fn($q, $search) => $q->where('username', 'like', "%{$search}%"))
             ->orderBy('role')
             ->orderByDesc('created_at')
             ->paginate($perPage);
