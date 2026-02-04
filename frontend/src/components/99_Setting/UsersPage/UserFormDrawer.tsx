@@ -38,7 +38,11 @@ const baseSchema = z.object({
     .regex(/^[^ -~｡-ﾟ]+$/, "全角で入力してください"),
   email: z.string().email("メール形式が不正です").max(255, "255文字以内"),
   loginid: z.string().min(1, "必須です").max(100, "100文字以内"),
-  staff_number: z.string().min(1, "必須です").max(100, "100文字以内"),
+  staff_number: z
+    .string()
+    .min(1, "必須です")
+    .max(100, "100文字以内")
+    .regex(/^\d+$/, "半角数字で入力してください"),
   role: z.union([
     z.literal(String(UserRole.SYSTEM_ADMIN)),
     z.literal(String(UserRole.GENERAL_USER)),
@@ -194,10 +198,21 @@ export function UserFormDrawer({
               </div>
               <div className="space-y-1">
                 <Label htmlFor="staff_number">社員番号</Label>
-                <Input
-                  id="staff_number"
-                  placeholder="社員番号"
-                  {...form.register("staff_number")}
+                <Controller
+                  control={form.control}
+                  name="staff_number"
+                  render={({ field }) => (
+                    <Input
+                      {...field}
+                      id="staff_number"
+                      placeholder="社員番号"
+                      inputMode="numeric"
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/[^0-9]/g, "");
+                        field.onChange(value);
+                      }}
+                    />
+                  )}
                 />
                 <p className="text-xs h-4 text-destructive mt-[1px]">
                   {form.formState.errors.staff_number &&
