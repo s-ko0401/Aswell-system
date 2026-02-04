@@ -38,6 +38,7 @@ const baseSchema = z.object({
     .regex(/^[^ -~｡-ﾟ]+$/, "全角で入力してください"),
   email: z.string().email("メール形式が不正です").max(255, "255文字以内"),
   loginid: z.string().min(1, "必須です").max(100, "100文字以内"),
+  staff_number: z.string().min(1, "必須です").max(100, "100文字以内"),
   role: z.union([
     z.literal(String(UserRole.SYSTEM_ADMIN)),
     z.literal(String(UserRole.GENERAL_USER)),
@@ -94,6 +95,7 @@ export function UserFormDrawer({
       username: "",
       email: "",
       loginid: "",
+      staff_number: "",
       password: "",
       confirmPassword: "",
       role: String(UserRole.GENERAL_USER),
@@ -107,6 +109,7 @@ export function UserFormDrawer({
           username: userToEdit.username,
           email: userToEdit.email,
           loginid: userToEdit.loginid,
+          staff_number: userToEdit.staff_number || "",
           password: "",
           confirmPassword: "",
           role: String(userToEdit.role) as "1" | "2",
@@ -116,6 +119,7 @@ export function UserFormDrawer({
           username: "",
           email: "",
           loginid: "",
+          staff_number: "",
           password: "",
           confirmPassword: "",
           role: String(UserRole.GENERAL_USER),
@@ -137,7 +141,7 @@ export function UserFormDrawer({
           新規追加
         </Button>
       </DrawerTrigger>
-      <DrawerContent className="h-[93vh]">
+      <DrawerContent className="h-[97vh]">
         <div className="mx-auto w-full max-w-2xl h-full overflow-y-auto pb-4">
           <DrawerHeader>
             <DrawerTitle>
@@ -149,21 +153,21 @@ export function UserFormDrawer({
                 : "新しいユーザーの情報を入力してください。"}
             </DrawerDescription>
           </DrawerHeader>
-          <form className="p-4" onSubmit={form.handleSubmit(onSubmit)}>
-            <div className="grid gap-4 md:grid-cols-2 pb-4">
-              <div className="space-y-2">
+          <form className="px-4" onSubmit={form.handleSubmit(onSubmit)}>
+            <div className="grid gap-y-2 gap-x-4 md:grid-cols-2 pb-4">
+              <div className="space-y-1">
                 <Label htmlFor="username">氏名</Label>
                 <Input
                   id="username"
                   placeholder="全角"
                   {...form.register("username")}
                 />
-                <p className="text-xs h-4 text-destructive">
+                <p className="text-xs h-4 text-destructive mt-[1px]">
                   {form.formState.errors.username &&
                     form.formState.errors.username.message}
                 </p>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1">
                 <Label htmlFor="email">メール</Label>
                 <Input
                   id="email"
@@ -171,24 +175,36 @@ export function UserFormDrawer({
                   type="email"
                   {...form.register("email")}
                 />
-                <p className="text-xs h-4 text-destructive">
+                <p className="text-xs h-4 text-destructive mt-[1px]">
                   {form.formState.errors.email &&
                     form.formState.errors.email.message}
                 </p>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1">
                 <Label htmlFor="loginid">ログインID</Label>
                 <Input
                   id="loginid"
                   placeholder="ログインID"
                   {...form.register("loginid")}
                 />
-                <p className="text-xs h-4 text-destructive">
+                <p className="text-xs h-4 text-destructive mt-[1px]">
                   {form.formState.errors.loginid &&
                     form.formState.errors.loginid.message}
                 </p>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1">
+                <Label htmlFor="staff_number">社員番号</Label>
+                <Input
+                  id="staff_number"
+                  placeholder="社員番号"
+                  {...form.register("staff_number")}
+                />
+                <p className="text-xs h-4 text-destructive mt-[1px]">
+                  {form.formState.errors.staff_number &&
+                    form.formState.errors.staff_number.message}
+                </p>
+              </div>
+              <div className="space-y-1 md:col-span-2">
                 <Label>権限</Label>
                 <Controller
                   control={form.control}
@@ -212,13 +228,12 @@ export function UserFormDrawer({
                     </Select>
                   )}
                 />
-                {form.formState.errors.role && (
-                  <p className="text-xs text-destructive">
-                    {form.formState.errors.role.message}
-                  </p>
-                )}
+                <p className="text-xs h-4 text-destructive mt-[1px]">
+                  {form.formState.errors.role &&
+                    form.formState.errors.role.message}
+                </p>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1">
                 <Label htmlFor="password">
                   パスワード
                   {isEditMode && (
@@ -233,12 +248,12 @@ export function UserFormDrawer({
                   placeholder="パスワード"
                   {...form.register("password")}
                 />
-                <p className="text-xs h-4 text-destructive">
+                <p className="text-xs h-4 text-destructive mt-[1px]">
                   {form.formState.errors.password &&
                     form.formState.errors.password.message}
                 </p>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1">
                 <Label htmlFor="confirmPassword">
                   パスワード（確認）
                   {isEditMode && (
@@ -253,7 +268,7 @@ export function UserFormDrawer({
                   placeholder="パスワード"
                   {...form.register("confirmPassword")}
                 />
-                <p className="text-xs h-4 text-destructive">
+                <p className="text-xs h-4 text-destructive mt-[1px]">
                   {form.formState.errors.confirmPassword &&
                     form.formState.errors.confirmPassword.message}
                 </p>

@@ -59,6 +59,7 @@ export function UserListTable({
             <TableHead>氏名</TableHead>
             <TableHead>メール</TableHead>
             <TableHead>ログインID</TableHead>
+            <TableHead>社員番号</TableHead>
             <TableHead>権限</TableHead>
             <TableHead>作成日</TableHead>
             <TableHead>更新日</TableHead>
@@ -90,6 +91,7 @@ export function UserListTable({
                 <TableCell className="font-medium">{user.username}</TableCell>
                 <TableCell>{user.email}</TableCell>
                 <TableCell>{user.loginid}</TableCell>
+                <TableCell>{user.staff_number || "-"}</TableCell>
                 <TableCell>
                   {USER_ROLE_LABELS[user.role as UserRoleId] ?? "不明"}
                 </TableCell>

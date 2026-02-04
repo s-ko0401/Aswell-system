@@ -18,6 +18,7 @@ class StoreUserRequest extends FormRequest
             'username' => ['required', 'string', 'max:100'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'loginid' => ['required', 'string', 'max:100', 'unique:users,loginid'],
+            'staff_number' => ['required', 'string', 'max:100', 'unique:users,staff_number'],
             'password' => ['required', 'string', 'min:8'],
             'role' => ['required', 'integer', 'in:1,2'],
             'page_permissions' => ['nullable', 'array'],

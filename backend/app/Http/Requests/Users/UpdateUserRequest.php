@@ -20,6 +20,7 @@ class UpdateUserRequest extends FormRequest
             'username' => ['required', 'string', 'max:100'],
             'email' => ['required', 'email', 'max:255', "unique:users,email,{$userId}"],
             'loginid' => ['required', 'string', 'max:100', "unique:users,loginid,{$userId}"],
+            'staff_number' => ['required', 'string', 'max:100', "unique:users,staff_number,{$userId}"],
             'password' => ['nullable', 'string', 'min:8'],
             'role' => ['required', 'integer', 'in:1,2'],
             'page_permissions' => ['nullable', 'array'],

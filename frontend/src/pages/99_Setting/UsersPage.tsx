@@ -109,12 +109,14 @@ export function UsersPage() {
         username: string;
         email: string;
         loginid: string;
+        staff_number?: string;
         role: number;
         password?: string;
       } = {
         username: values.username,
         email: values.email,
         loginid: values.loginid,
+        staff_number: values.staff_number || undefined,
         role: Number(values.role),
       };
       // パスワードが入力されている場合のみ含める
@@ -151,6 +153,7 @@ export function UsersPage() {
         username: user.username,
         email: user.email,
         loginid: user.loginid,
+        staff_number: user.staff_number || undefined,
         role: Number(user.role),
         page_permissions: permissions,
       };

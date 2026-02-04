@@ -80,6 +80,7 @@ class UserService
             'username' => $request->input('username'),
             'email' => $request->input('email'),
             'loginid' => $request->input('loginid'),
+            'staff_number' => $request->input('staff_number'),
             'password' => Hash::make($request->input('password')),
             'role' => (int) $request->input('role'),
             'page_permissions' => $request->input('page_permissions'),
@@ -99,6 +100,7 @@ class UserService
         $user->username = $request->input('username');
         $user->email = $request->input('email');
         $user->loginid = $request->input('loginid');
+        $user->staff_number = $request->input('staff_number');
         $user->role = (int) $request->input('role');
 
         if ($request->has('page_permissions')) {
@@ -137,6 +139,7 @@ class UserService
             'username' => $user->username,
             'email' => $user->email,
             'loginid' => $user->loginid,
+            'staff_number' => $user->staff_number,
             'role' => (int) $user->role,
             'page_permissions' => PagePermissions::resolve($user),
             'created_at' => $user->created_at?->toIso8601String(),

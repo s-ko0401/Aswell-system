@@ -3,6 +3,7 @@ export type UserItem = {
   username: string;
   email: string;
   loginid: string;
+  staff_number: string | null;
   role: number;
   page_permissions?: string[];
   created_at: string | null;
