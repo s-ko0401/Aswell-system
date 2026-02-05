@@ -48,7 +48,7 @@ export function UserFilters({
             <Input
               id="search"
               type="search"
-              placeholder="ユーザー名で検索"
+              placeholder="ユーザー名・社員番号で検索"
               className="w-[250px] pl-9 bg-background"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}

@@ -30,4 +30,13 @@ class UpdateUserRequest extends FormRequest
             ],
         ];
     }
+
+    public function messages(): array
+    {
+        return [
+            'email.unique'          => 'そのメールアドレスは既に使用されています。',
+            'loginid.unique'        => 'そのログインIDは既に使用されています。',
+            'staff_number.unique'   => 'その社員番号は既に使用されています。',
+        ];
+    }
 }

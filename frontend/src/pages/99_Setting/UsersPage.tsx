@@ -1,4 +1,6 @@
 ﻿import { useState } from "react";
+import { AxiosError } from "axios";
+import { type ApiErrorResponse } from "@/types/api";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
@@ -24,6 +26,9 @@ export function UsersPage() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserItem | null>(null);
+  const [apiErrors, setApiErrors] = useState<Record<string, string[]> | null>(
+    null,
+  );
 
   const [permissionOpen, setPermissionOpen] = useState(false);
   const [permissionUser, setPermissionUser] = useState<UserItem | null>(null);
@@ -88,7 +93,19 @@ export function UsersPage() {
       toast({ title: "ユーザーを追加しました" });
       setOpen(false);
     },
-    onError: () => {
+    onError: (error: AxiosError<ApiErrorResponse>) => {
+      const errorData = error.response?.data;
+      if (
+        errorData?.code === "VALIDATION_ERROR" ||
+        errorData?.error?.code === "VALIDATION_ERROR"
+      ) {
+        const details = errorData?.details || errorData?.error?.details;
+        if (details) {
+          setApiErrors(details);
+          return;
+        }
+      }
+
       toast({
         variant: "destructive",
         title: "追加に失敗しました",
@@ -132,7 +149,19 @@ export function UsersPage() {
       setOpen(false);
       setEditingUser(null);
     },
-    onError: () => {
+    onError: (error: AxiosError<ApiErrorResponse>) => {
+      const errorData = error.response?.data;
+      if (
+        errorData?.code === "VALIDATION_ERROR" ||
+        errorData?.error?.code === "VALIDATION_ERROR"
+      ) {
+        const details = errorData?.details || errorData?.error?.details;
+        if (details) {
+          setApiErrors(details);
+          return;
+        }
+      }
+
       toast({
         variant: "destructive",
         title: "更新に失敗しました",
@@ -228,11 +257,18 @@ export function UsersPage() {
         </div>
         <UserFormDrawer
           open={open}
-          onOpenChange={setOpen}
+          onOpenChange={(val) => {
+            setOpen(val);
+            if (!val) setApiErrors(null);
+          }}
           userToEdit={editingUser}
-          onAdd={() => setEditingUser(null)}
+          onAdd={() => {
+            setEditingUser(null);
+            setApiErrors(null);
+          }}
           onSubmit={handleFormSubmit}
           isPending={createMutation.isPending || updateMutation.isPending}
+          apiErrors={apiErrors}
         />
       </div>
 
