@@ -61,7 +61,6 @@ export function UserListTable({
             <TableHead>ログインID</TableHead>
             <TableHead>社員番号</TableHead>
             <TableHead>権限</TableHead>
-            <TableHead>作成日</TableHead>
             <TableHead>更新日</TableHead>
             <TableHead className="w-[50px]"></TableHead>
           </TableRow>
@@ -95,7 +94,6 @@ export function UserListTable({
                 <TableCell>
                   {USER_ROLE_LABELS[user.role as UserRoleId] ?? "不明"}
                 </TableCell>
-                <TableCell>{formatDate(user.created_at)}</TableCell>
                 <TableCell>{formatDate(user.updated_at)}</TableCell>
                 <TableCell>
                   <DropdownMenu>

@@ -32,27 +32,42 @@ import type { UserItem } from "@/types/settings";
 
 const baseSchema = z.object({
   username: z
-    .string()
-    .min(1, "必須です")
-    .max(100, "100文字以内")
-    .regex(/^[^ -~｡-ﾟ]+$/, "全角で入力してください"),
-  email: z.string().email("メール形式が不正です").max(255, "255文字以内"),
-  loginid: z.string().min(1, "必須です").max(100, "100文字以内"),
+    .string({ message: "ユーザー名は必須です。" })
+    .min(1, "ユーザー名は必須です。")
+    .max(100, "ユーザー名は100文字以内で入力してください。")
+    .regex(/^[^ -~｡-ﾟ]+$/, "ユーザー名は全角で入力してください。"),
+  email: z
+    .string({ message: "メールアドレスは必須です。" })
+    .min(1, "メールアドレスは必須です。")
+    .email("有効なメールアドレスを入力してください。")
+    .max(255, "メールアドレスは255文字以内で入力してください。"),
+  loginid: z
+    .string({ message: "ログインIDは必須です。" })
+    .min(1, "ログインIDは必須です。")
+    .max(100, "ログインIDは100文字以内で入力してください。"),
   staff_number: z
-    .string()
-    .min(1, "必須です")
-    .max(100, "100文字以内")
-    .regex(/^\d+$/, "半角数字で入力してください"),
-  role: z.union([
-    z.literal(String(UserRole.SYSTEM_ADMIN)),
-    z.literal(String(UserRole.GENERAL_USER)),
-  ]),
+    .string({ message: "社員番号は必須です。" })
+    .min(1, "社員番号は必須です。")
+    .max(100, "社員番号は100文字以内で入力してください。")
+    .regex(/^\d+$/, "社員番号は半角数字で入力してください。"),
+  role: z.union(
+    [
+      z.literal(String(UserRole.SYSTEM_ADMIN)),
+      z.literal(String(UserRole.GENERAL_USER)),
+    ],
+    { message: "権限は必須です。" },
+  ),
 });
 
 const createSchema = baseSchema
   .extend({
-    password: z.string().min(1, "必須です").min(8, "8文字以上"),
-    confirmPassword: z.string().min(1, "必須です"),
+    password: z
+      .string({ message: "パスワードは必須です。" })
+      .min(1, "パスワードは必須です。")
+      .min(8, "パスワードは8文字以上で入力してください。"),
+    confirmPassword: z
+      .string({ message: "パスワード（確認）は必須です。" })
+      .min(1, "パスワード（確認）は必須です。"),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "パスワードが一致しません",
@@ -61,7 +76,11 @@ const createSchema = baseSchema
 
 const editSchema = baseSchema
   .extend({
-    password: z.string().min(8, "8文字以上").optional().or(z.literal("")),
+    password: z
+      .string()
+      .min(8, "パスワードは8文字以上で入力してください。")
+      .optional()
+      .or(z.literal("")),
     confirmPassword: z.string().optional().or(z.literal("")),
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -80,6 +99,7 @@ type UserFormDrawerProps = {
   onSubmit: (values: UserFormValues) => void;
   isPending: boolean;
   onAdd?: () => void;
+  apiErrors?: Record<string, string[]> | null;
 };
 
 export function UserFormDrawer({
@@ -89,6 +109,7 @@ export function UserFormDrawer({
   onSubmit,
   isPending,
   onAdd,
+  apiErrors,
 }: UserFormDrawerProps) {
   const isEditMode = !!userToEdit;
   const schema = isEditMode ? editSchema : createSchema;
@@ -132,6 +153,19 @@ export function UserFormDrawer({
     }
   }, [open, userToEdit, form]);
 
+  useEffect(() => {
+    if (apiErrors) {
+      Object.entries(apiErrors).forEach(([key, messages]) => {
+        if (messages && messages.length > 0) {
+          form.setError(key as keyof UserFormValues, {
+            type: "manual",
+            message: messages.join("\n"),
+          });
+        }
+      });
+    }
+  }, [apiErrors, form]);
+
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerTrigger asChild>
@@ -166,7 +200,7 @@ export function UserFormDrawer({
                   placeholder="全角"
                   {...form.register("username")}
                 />
-                <p className="text-xs h-4 text-destructive mt-[1px]">
+                <p className="text-xs min-h-4 text-destructive mt-[1px] whitespace-pre-wrap">
                   {form.formState.errors.username &&
                     form.formState.errors.username.message}
                 </p>
@@ -179,7 +213,7 @@ export function UserFormDrawer({
                   type="email"
                   {...form.register("email")}
                 />
-                <p className="text-xs h-4 text-destructive mt-[1px]">
+                <p className="text-xs min-h-4 text-destructive mt-[1px] whitespace-pre-wrap">
                   {form.formState.errors.email &&
                     form.formState.errors.email.message}
                 </p>
@@ -191,7 +225,7 @@ export function UserFormDrawer({
                   placeholder="ログインID"
                   {...form.register("loginid")}
                 />
-                <p className="text-xs h-4 text-destructive mt-[1px]">
+                <p className="text-xs min-h-4 text-destructive mt-[1px] whitespace-pre-wrap">
                   {form.formState.errors.loginid &&
                     form.formState.errors.loginid.message}
                 </p>
@@ -214,7 +248,7 @@ export function UserFormDrawer({
                     />
                   )}
                 />
-                <p className="text-xs h-4 text-destructive mt-[1px]">
+                <p className="text-xs min-h-4 text-destructive mt-[1px] whitespace-pre-wrap">
                   {form.formState.errors.staff_number &&
                     form.formState.errors.staff_number.message}
                 </p>
@@ -243,7 +277,7 @@ export function UserFormDrawer({
                     </Select>
                   )}
                 />
-                <p className="text-xs h-4 text-destructive mt-[1px]">
+                <p className="text-xs min-h-4 text-destructive mt-[1px] whitespace-pre-wrap">
                   {form.formState.errors.role &&
                     form.formState.errors.role.message}
                 </p>
@@ -263,7 +297,7 @@ export function UserFormDrawer({
                   placeholder="パスワード"
                   {...form.register("password")}
                 />
-                <p className="text-xs h-4 text-destructive mt-[1px]">
+                <p className="text-xs min-h-4 text-destructive mt-[1px] whitespace-pre-wrap">
                   {form.formState.errors.password &&
                     form.formState.errors.password.message}
                 </p>
@@ -283,7 +317,7 @@ export function UserFormDrawer({
                   placeholder="パスワード"
                   {...form.register("confirmPassword")}
                 />
-                <p className="text-xs h-4 text-destructive mt-[1px]">
+                <p className="text-xs min-h-4 text-destructive mt-[1px] whitespace-pre-wrap">
                   {form.formState.errors.confirmPassword &&
                     form.formState.errors.confirmPassword.message}
                 </p>
