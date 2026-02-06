@@ -15,9 +15,17 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { USER_ROLE_LABELS, type UserRoleId } from "@/lib/roles";
 
 type IntegrationStatus = {
   google: {
@@ -46,7 +54,9 @@ export function ProfilePage() {
   const googleParam = searchParams.get("google");
   const [isAclOpen, setIsAclOpen] = useState(false);
   const [aclSearch, setAclSearch] = useState("");
-  const [selectedViewerIds, setSelectedViewerIds] = useState<Set<number>>(new Set());
+  const [selectedViewerIds, setSelectedViewerIds] = useState<Set<number>>(
+    new Set(),
+  );
   const aclInitialized = useRef(false);
 
   const statusQuery = useQuery({
@@ -176,7 +186,8 @@ export function ProfilePage() {
     }
 
     return base.filter((aclUser) => {
-      const label = `${aclUser.username ?? ""} ${aclUser.email ?? ""}`.toLowerCase();
+      const label =
+        `${aclUser.username ?? ""} ${aclUser.email ?? ""}`.toLowerCase();
       return tokens.every((token) => label.includes(token));
     });
   }, [aclUsers, normalizedAclSearch, userId]);
@@ -190,10 +201,14 @@ export function ProfilePage() {
   }
 
   if (!user) {
-    return <div className="text-sm text-destructive">ユーザー情報が取得できません。</div>;
+    return (
+      <div className="text-sm text-destructive">
+        ユーザー情報が取得できません。
+      </div>
+    );
   }
 
-  const roleLabel = user.role === 1 ? "システム管理者" : "一般ユーザー";
+  const roleLabel = USER_ROLE_LABELS[user.role as UserRoleId] ?? "Unknown";
   const googleStatus = statusQuery.data?.google;
   const handleAclOpenChange = (open: boolean) => {
     setIsAclOpen(open);
@@ -243,7 +258,9 @@ export function ProfilePage() {
       <div className="space-y-4">
         <div>
           <h2 className="text-lg font-semibold">Connectors</h2>
-          <p className="text-sm text-muted-foreground">外部カレンダーと連携できます。</p>
+          <p className="text-sm text-muted-foreground">
+            外部カレンダーと連携できます。
+          </p>
         </div>
 
         <Card>
@@ -258,7 +275,9 @@ export function ProfilePage() {
                   自分の予定を読み取り専用で連携します。
                 </CardDescription>
               </div>
-              <Badge variant={googleStatus?.connected ? "default" : "secondary"}>
+              <Badge
+                variant={googleStatus?.connected ? "default" : "secondary"}
+              >
                 {googleStatus?.connected ? "Connected" : "Not connected"}
               </Badge>
             </div>
@@ -277,50 +296,55 @@ export function ProfilePage() {
               </div>
             )}
 
-            {!statusQuery.isLoading && !statusQuery.isError && !googleStatus?.connected && (
-              <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-                <span className="text-muted-foreground">未接続です。</span>
-                <Button
-                  onClick={() => connectMutation.mutate()}
-                  disabled={connectMutation.isPending}
-                >
-                  {connectMutation.isPending ? "接続中..." : "接続"}
-                </Button>
-              </div>
-            )}
+            {!statusQuery.isLoading &&
+              !statusQuery.isError &&
+              !googleStatus?.connected && (
+                <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                  <span className="text-muted-foreground">未接続です。</span>
+                  <Button
+                    onClick={() => connectMutation.mutate()}
+                    disabled={connectMutation.isPending}
+                  >
+                    {connectMutation.isPending ? "接続中..." : "接続"}
+                  </Button>
+                </div>
+              )}
 
-            {!statusQuery.isLoading && !statusQuery.isError && googleStatus?.connected && (
-              <div className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="text-sm">
-                    <div className="text-muted-foreground">接続アカウント</div>
-                    <div className="font-medium">{googleStatus.email}</div>
-                    <div className="text-xs text-muted-foreground">
-                      公開先: {aclCount}人（自分は常に表示）
+            {!statusQuery.isLoading &&
+              !statusQuery.isError &&
+              googleStatus?.connected && (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="text-sm">
+                      <div className="text-muted-foreground">
+                        接続アカウント
+                      </div>
+                      <div className="font-medium">{googleStatus.email}</div>
+                      <div className="text-xs text-muted-foreground">
+                        公開先: {aclCount}人（自分は常に表示）
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsAclOpen(true)}
+                        disabled={aclUsersQuery.isLoading || aclQuery.isLoading}
+                      >
+                        表示設定
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => disconnectMutation.mutate()}
+                        disabled={disconnectMutation.isPending}
+                      >
+                        {disconnectMutation.isPending ? "解除中..." : "切断"}
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setIsAclOpen(true)}
-                      disabled={aclUsersQuery.isLoading || aclQuery.isLoading}
-                    >
-                      表示設定
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => disconnectMutation.mutate()}
-                      disabled={disconnectMutation.isPending}
-                    >
-                      {disconnectMutation.isPending ? "解除中..." : "切断"}
-                    </Button>
-                  </div>
                 </div>
-
-              </div>
-            )}
+              )}
           </CardContent>
         </Card>
       </div>
@@ -382,7 +406,9 @@ export function ProfilePage() {
                             }}
                           />
                           <div className="space-y-1">
-                            <div className="font-medium">{aclUser.username}</div>
+                            <div className="font-medium">
+                              {aclUser.username}
+                            </div>
                             <div className="text-xs text-muted-foreground break-all">
                               {aclUser.email}
                             </div>
@@ -400,9 +426,7 @@ export function ProfilePage() {
               閉じる
             </Button>
             <Button
-              onClick={() =>
-                aclMutation.mutate(Array.from(selectedViewerIds))
-              }
+              onClick={() => aclMutation.mutate(Array.from(selectedViewerIds))}
               disabled={aclMutation.isPending}
             >
               {aclMutation.isPending ? "保存中..." : "保存"}

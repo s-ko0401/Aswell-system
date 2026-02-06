@@ -17,6 +17,7 @@ class UserSeeder extends Seeder
             ['loginid' => 'admin'],
             [
                 'username' => 'admin',
+                'staff_number' => '000',
                 'email' => 's-ko@as-well.co.jp',
                 'password' => Hash::make('admin'),
                 'role' => 1,
