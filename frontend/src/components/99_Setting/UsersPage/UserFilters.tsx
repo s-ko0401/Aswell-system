@@ -26,17 +26,23 @@ export function UserFilters({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4 justify-between w-full">
           <Tabs value={selectedRole} onValueChange={onRoleChange}>
-            <TabsList>
+            <TabsList className="bg-zinc-100 dark:bg-zinc-800">
               <TabsTrigger value="all">
                 全ユーザー
-                <Badge variant="secondary" className="ml-2">
+                <Badge
+                  variant="secondary"
+                  className="ml-2 dark:bg-zinc-700 dark:text-zinc-100"
+                >
                   {allCount}
                 </Badge>
               </TabsTrigger>
               {USER_ROLE_OPTIONS.map((option) => (
                 <TabsTrigger key={option.value} value={option.value}>
                   {option.label}
-                  <Badge variant="secondary" className="ml-2">
+                  <Badge
+                    variant="secondary"
+                    className="ml-2 dark:bg-zinc-700 dark:text-zinc-100"
+                  >
                     {getRoleCount(Number(option.value))}
                   </Badge>
                 </TabsTrigger>

@@ -48,7 +48,7 @@ function PermissionDrawerContent({
   };
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-xl flex-col px-4">
+    <div className="mx-auto flex justify-center h-full w-full max-w-xl flex-col px-4">
       <DrawerHeader>
         <DrawerTitle>ページ権限</DrawerTitle>
         <DrawerDescription>
@@ -61,7 +61,7 @@ function PermissionDrawerContent({
           {PAGE_PERMISSION_OPTIONS.map((option) => (
             <label
               key={option.key}
-              className="flex items-center gap-3 rounded-md border px-3 py-2 text-sm bg-card cursor-pointer"
+              className="hover:bg-muted/50 flex items-center gap-3 rounded-md border px-3 py-2 text-sm bg-card cursor-pointer"
             >
               <input
                 type="checkbox"
