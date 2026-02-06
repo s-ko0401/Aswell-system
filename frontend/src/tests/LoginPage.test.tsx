@@ -6,19 +6,20 @@ import { describe, it, expect, vi } from "vitest";
 import api from "@/lib/api";
 
 // APIモック
-vi.mock("@/lib/api", () => ({
-  default: {
-    post: vi.fn(),
-  },
-}));
+vi.mock("@/lib/api", async () => {
+  const { mockApi } = await import("./mocks");
+  return mockApi();
+});
 
 // useToastモック
-const mockToast = vi.fn();
-vi.mock("@/hooks/use-toast", () => ({
-  useToast: () => ({
-    toast: mockToast,
-  }),
-}));
+const mockToastFn = vi.fn();
+vi.mock("@/hooks/use-toast", async () => {
+  return {
+    useToast: () => ({
+      toast: mockToastFn,
+    }),
+  };
+});
 
 // tokenStorageモック
 vi.mock("@/lib/auth", () => ({
@@ -108,7 +109,7 @@ describe("LoginPage", () => {
     });
 
     await waitFor(() => {
-      expect(mockToast).toHaveBeenCalledWith({
+      expect(mockToastFn).toHaveBeenCalledWith({
         title: "ログインしました",
         description: "ようこそ、Test Userさん",
       });
@@ -132,7 +133,7 @@ describe("LoginPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "ログイン" }));
 
     await waitFor(() => {
-      expect(mockToast).toHaveBeenCalledWith({
+      expect(mockToastFn).toHaveBeenCalledWith({
         variant: "destructive",
         title: "ログイン失敗",
         description: "ID またはパスワードが違います",
@@ -147,12 +148,12 @@ describe("LoginPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "ログイン" }));
 
     await waitFor(() => {
-      expect(mockToast).toHaveBeenCalledWith({
+      expect(mockToastFn).toHaveBeenCalledWith({
         variant: "destructive",
         title: "入力エラー",
         description: "ログインIDを入力してください",
       });
-      expect(mockToast).toHaveBeenCalledWith({
+      expect(mockToastFn).toHaveBeenCalledWith({
         variant: "destructive",
         title: "入力エラー",
         description: "パスワードを入力してください",
