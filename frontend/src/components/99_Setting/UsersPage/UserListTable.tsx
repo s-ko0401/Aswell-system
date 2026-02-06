@@ -79,7 +79,7 @@ export function UserListTable({
             <TableRow>
               <TableCell colSpan={7} className="h-[200px]">
                 <div className="flex flex-col items-center justify-center gap-4 text-muted-foreground">
-                  <AppLogoIcon className="h-24 w-24 opacity-20" />
+                  <AppLogoIcon className="h-24 w-24 opacity-20 dark:fill-white" />
                   <p>ユーザー登録がありません</p>
                 </div>
               </TableCell>
