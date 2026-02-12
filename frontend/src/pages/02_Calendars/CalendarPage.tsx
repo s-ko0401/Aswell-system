@@ -69,6 +69,12 @@ import {
     DrawerTitle,
 } from "../../components/ui/drawer";
 import { Spinner } from "../../components/ui/spinner";
+import {
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
+} from "../../components/ui/accordion";
 
 export const CalendarPage: React.FC = () => {
     const { data: me } = useAuth();
@@ -142,6 +148,14 @@ export const CalendarPage: React.FC = () => {
         });
         return eachDayOfInterval({ start, end });
     }, [memberCalendarMonth]);
+
+    const memberMonthWeeks = React.useMemo(() => {
+        const weeks: Date[][] = [];
+        for (let index = 0; index < memberMonthDays.length; index += 7) {
+            weeks.push(memberMonthDays.slice(index, index + 7));
+        }
+        return weeks;
+    }, [memberMonthDays]);
 
     const weekDayLabels = React.useMemo(
         () => ["月", "火", "水", "木", "金", "土", "日"],
@@ -461,6 +475,37 @@ export const CalendarPage: React.FC = () => {
         return `${partMap.year}-${partMap.month}-${partMap.day}`;
     };
 
+    const MEMBER_COLUMN_WIDTH = 140;
+    const DAY_COLUMN_MIN_WIDTH = 160;
+    const MULTI_DAY_BAR_HEIGHT = 22;
+    const MULTI_DAY_BAR_GAP = 4;
+    const MULTI_DAY_LIST_GAP = 4;
+    const DAY_CELL_BASE_PADDING = 12;
+    const MONTH_CELL_BASE_PADDING = 8;
+
+    const compareDayKeys = (a: string, b: string) => a.localeCompare(b);
+
+    const getEventRangeKeys = (event: CalendarEvent) => {
+        const start = new Date(event.start.dateTime);
+        const end = new Date(event.end.dateTime);
+        const endInclusive = new Date(end.getTime() - 1);
+
+        return {
+            startKey: dayKey(start),
+            endKey: dayKey(endInclusive),
+        };
+    };
+
+    const isMultiDayEvent = (event: CalendarEvent) => {
+        const { startKey, endKey } = getEventRangeKeys(event);
+        return startKey !== endKey;
+    };
+
+    const eventOverlapsDayKey = (event: CalendarEvent, key: string) => {
+        const { startKey, endKey } = getEventRangeKeys(event);
+        return compareDayKeys(startKey, key) <= 0 && compareDayKeys(endKey, key) >= 0;
+    };
+
     const isSourceEnabled = React.useCallback(
         (source: "outlook" | "google") => sourceFilters.has(source),
         [sourceFilters]
@@ -495,10 +540,20 @@ export const CalendarPage: React.FC = () => {
         [filterEventsBySource, memberEvents]
     );
 
+    const memberMultiDayEvents = React.useMemo(
+        () => filteredMemberEvents.filter((event) => isMultiDayEvent(event)),
+        [filteredMemberEvents, isMultiDayEvent]
+    );
+
+    const memberSingleDayEvents = React.useMemo(
+        () => filteredMemberEvents.filter((event) => !isMultiDayEvent(event)),
+        [filteredMemberEvents, isMultiDayEvent]
+    );
+
     const memberEventsByDay = React.useMemo(() => {
         const map = new Map<string, CalendarEvent[]>();
 
-        for (const event of filteredMemberEvents) {
+        for (const event of memberSingleDayEvents) {
             const key = dayKey(event.start.dateTime);
             const list = map.get(key) ?? [];
             list.push(event);
@@ -515,7 +570,7 @@ export const CalendarPage: React.FC = () => {
         }
 
         return map;
-    }, [filteredMemberEvents]);
+    }, [memberSingleDayEvents]);
 
     const roomNames = React.useMemo(
         () => new Set(["名古屋会議室（大）", "名古屋会議室（小）"]),
@@ -559,6 +614,97 @@ export const CalendarPage: React.FC = () => {
             return emailA.localeCompare(emailB, "en", { sensitivity: "base" });
         },
         [me?.email, roomNames]
+    );
+
+    const weekDayKeys = React.useMemo(() => days.map((day) => dayKey(day)), [days]);
+
+    const buildMultiDayLayout = React.useCallback(
+        (events: CalendarEvent[], dayKeys: string[]) => {
+            if (dayKeys.length === 0) {
+                return { bars: [], laneCount: 0 };
+            }
+
+            const dayIndexMap = new Map<string, number>();
+            dayKeys.forEach((key, index) => {
+                dayIndexMap.set(key, index);
+            });
+
+            const rangeStartKey = dayKeys[0];
+            const rangeEndKey = dayKeys[dayKeys.length - 1];
+            const bars: Array<{
+                event: CalendarEvent;
+                startIndex: number;
+                endIndex: number;
+                lane: number;
+            }> = [];
+            const laneByDay = Array(dayKeys.length).fill(0);
+
+            for (const event of events) {
+                const { startKey, endKey } = getEventRangeKeys(event);
+                if (
+                    compareDayKeys(startKey, rangeEndKey) > 0 ||
+                    compareDayKeys(endKey, rangeStartKey) < 0
+                ) {
+                    continue;
+                }
+
+                const startIndex = dayIndexMap.get(startKey) ?? 0;
+                const endIndex =
+                    dayIndexMap.get(endKey) ?? dayKeys.length - 1;
+
+                bars.push({
+                    event,
+                    startIndex,
+                    endIndex,
+                    lane: 0,
+                });
+            }
+
+            bars.sort((a, b) => {
+                if (a.startIndex !== b.startIndex) {
+                    return a.startIndex - b.startIndex;
+                }
+                if (a.endIndex !== b.endIndex) {
+                    return a.endIndex - b.endIndex;
+                }
+                return (
+                    new Date(a.event.start.dateTime).getTime() -
+                    new Date(b.event.start.dateTime).getTime()
+                );
+            });
+
+            const laneEndIndices: number[] = [];
+
+            for (const bar of bars) {
+                let placed = false;
+                for (let i = 0; i < laneEndIndices.length; i += 1) {
+                    if (laneEndIndices[i] < bar.startIndex) {
+                        laneEndIndices[i] = bar.endIndex;
+                        bar.lane = i;
+                        placed = true;
+                        break;
+                    }
+                }
+
+                if (!placed) {
+                    bar.lane = laneEndIndices.length;
+                    laneEndIndices.push(bar.endIndex);
+                }
+            }
+
+            for (const bar of bars) {
+                for (let i = bar.startIndex; i <= bar.endIndex; i += 1) {
+                    laneByDay[i] = Math.max(laneByDay[i], bar.lane + 1);
+                }
+            }
+
+            return {
+                bars,
+                laneCount: laneEndIndices.length,
+                laneByDay,
+            };
+        },
+        [compareDayKeys, getEventRangeKeys]
     );
 
     const sortedCalendars = React.useMemo(
@@ -768,13 +914,34 @@ export const CalendarPage: React.FC = () => {
         }).format(new Date(value));
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 overflow-x-hidden">
             <div>
                 <h2 className="text-2xl font-bold tracking-tight">カレンダー</h2>
                 <p className="text-muted-foreground">
                     研修スケジュールや予定を管理します。
                 </p>
             </div>
+            <Accordion type="single" collapsible className="w-full">
+                <AccordionItem value="calendar-update" className="rounded-md border">
+                    <AccordionTrigger className="px-4 py-3 text-sm font-semibold">
+                        2026/01/25 更新
+                    </AccordionTrigger>
+                    <AccordionContent className="px-4 pb-4 text-sm">
+                        <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+                            <li>週を切り替えても、メンバー選択が消えなくなりました。</li>
+                            <li>
+                                自分専用のグループを作成して、ワンクリックで表示を切り替えられます。
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                    使い方：グループ管理 → 追加 → メンバー編集 → 保存。画面上のグループボタンで切り替え。
+                                </div>
+                            </li>
+                            <li>
+                                日跨ぎ予定は該当日のみ上段が表示されます。
+                            </li>
+                        </ul>
+                    </AccordionContent>
+                </AccordionItem>
+            </Accordion>
 
             <Card>
                 <CardContent className="m-6 space-y-4">
@@ -1477,11 +1644,11 @@ export const CalendarPage: React.FC = () => {
                         </p>
                     )}
                     {hasVisibleCalendars && (
-                        <div className="overflow-auto rounded-md border">
+                        <div className="overflow-x-auto scrollbar-hidden rounded-md border">
                             <div
                                 className="grid border-b text-sm font-medium"
                                 style={{
-                                    gridTemplateColumns: `140px repeat(${days.length}, minmax(160px, 1fr))`,
+                                    gridTemplateColumns: `${MEMBER_COLUMN_WIDTH}px repeat(${days.length}, minmax(${DAY_COLUMN_MIN_WIDTH}px, 1fr))`,
                                 }}
                             >
                                 <div className="border-r px-4 py-3">
@@ -1504,32 +1671,151 @@ export const CalendarPage: React.FC = () => {
                             </div>
                             <div className="divide-y">
                                 {sourceFilteredCalendars.map((calendar) => {
-                                    const eventsByDay = new Map<string, typeof calendar.events>();
+                                    const isWeekView = viewMode === "week";
+                                    const currentDayKey = dayKey(range.start);
+                                    const multiDayEvents = isWeekView
+                                        ? calendar.events.filter((event) =>
+                                              isMultiDayEvent(event)
+                                          )
+                                        : [];
+                                    const listEvents = isWeekView
+                                        ? calendar.events.filter(
+                                              (event) => !isMultiDayEvent(event)
+                                          )
+                                        : calendar.events.filter((event) =>
+                                              eventOverlapsDayKey(
+                                                  event,
+                                                  currentDayKey
+                                              )
+                                          );
+                                    const eventsByDay = new Map<
+                                        string,
+                                        typeof calendar.events
+                                    >();
 
-                                    for (const event of calendar.events) {
-                                        const key = dayKey(event.start.dateTime);
-                                        const list = eventsByDay.get(key) ?? [];
-                                        list.push(event);
-                                        eventsByDay.set(key, list);
+                                    if (isWeekView) {
+                                        for (const event of listEvents) {
+                                            const key = dayKey(
+                                                event.start.dateTime
+                                            );
+                                            const list =
+                                                eventsByDay.get(key) ?? [];
+                                            list.push(event);
+                                            eventsByDay.set(key, list);
+                                        }
+                                    } else {
+                                        eventsByDay.set(currentDayKey, [
+                                            ...listEvents,
+                                        ]);
                                     }
 
                                     for (const [key, list] of eventsByDay) {
                                         list.sort(
                                             (a, b) =>
-                                                new Date(a.start.dateTime).getTime() -
-                                                new Date(b.start.dateTime).getTime()
+                                                new Date(
+                                                    a.start.dateTime
+                                                ).getTime() -
+                                                new Date(
+                                                    b.start.dateTime
+                                                ).getTime()
                                         );
                                         eventsByDay.set(key, list);
                                     }
 
+                                    const multiDayLayout = isWeekView
+                                        ? buildMultiDayLayout(
+                                              multiDayEvents,
+                                              weekDayKeys
+                                          )
+                                        : { bars: [], laneCount: 0, laneByDay: [] };
+                                    const multiDayPaddingHeight = (lanes: number) =>
+                                        lanes > 0
+                                            ? lanes *
+                                                  (MULTI_DAY_BAR_HEIGHT +
+                                                      MULTI_DAY_BAR_GAP) +
+                                              MULTI_DAY_LIST_GAP
+                                            : 0;
+
                                     return (
                                         <div
                                             key={calendar.user.id}
-                                            className="grid"
+                                            className="relative grid"
                                             style={{
-                                                gridTemplateColumns: `140px repeat(${days.length}, minmax(160px, 1fr))`,
+                                                gridTemplateColumns: `${MEMBER_COLUMN_WIDTH}px repeat(${days.length}, minmax(${DAY_COLUMN_MIN_WIDTH}px, 1fr))`,
                                             }}
                                         >
+                                            {isWeekView &&
+                                                multiDayLayout.bars.length > 0 && (
+                                                    <div
+                                                        className="absolute top-0 z-10"
+                                                        style={{
+                                                            left: MEMBER_COLUMN_WIDTH,
+                                                            right: 0,
+                                                            display: "grid",
+                                                            gridTemplateColumns: `repeat(${days.length}, minmax(${DAY_COLUMN_MIN_WIDTH}px, 1fr))`,
+                                                            gridAutoRows: `${MULTI_DAY_BAR_HEIGHT}px`,
+                                                            rowGap: `${MULTI_DAY_BAR_GAP}px`,
+                                                            paddingTop: `${MULTI_DAY_BAR_GAP}px`,
+                                                            height:
+                                                                multiDayLayout.laneCount *
+                                                                    (MULTI_DAY_BAR_HEIGHT +
+                                                                        MULTI_DAY_BAR_GAP) +
+                                                                MULTI_DAY_BAR_GAP,
+                                                        }}
+                                                    >
+                                                        {multiDayLayout.bars.map(
+                                                            (bar) => (
+                                                                <button
+                                                                    type="button"
+                                                                    key={`${calendar.user.id}-${bar.event.id}-${bar.startIndex}-${bar.endIndex}`}
+                                                                    className="mx-2 truncate rounded-md border bg-muted/70 px-2 text-left text-[11px] leading-tight transition hover:bg-accent"
+                                                                    style={{
+                                                                        gridColumn: `${
+                                                                            bar.startIndex +
+                                                                            1
+                                                                        } / ${
+                                                                            bar.endIndex +
+                                                                            2
+                                                                        }`,
+                                                                        gridRow:
+                                                                            bar.lane +
+                                                                            1,
+                                                                    }}
+                                                                    onClick={() =>
+                                                                        openEventDrawer(
+                                                                            bar.event,
+                                                                            calendar.user
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    <div className="font-medium">
+                                                                        {bar.event
+                                                                            .isAllDay
+                                                                            ? "終日"
+                                                                            : formatTimeInJst(
+                                                                                  bar
+                                                                                      .event
+                                                                                      .start
+                                                                                      .dateTime
+                                                                              )}{" "}
+                                                                        {bar
+                                                                            .event
+                                                                            .subject ||
+                                                                            "(件名なし)"}
+                                                                        {bar
+                                                                            .event
+                                                                            .source ===
+                                                                            "google" && (
+                                                                            <span className="ml-1 text-[10px] text-muted-foreground">
+                                                                                （Googleカレンダー）
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </button>
+                                                            )
+                                                        )}
+                                                    </div>
+                                                )}
                                             <div className="border-r px-4 py-4">
                                                 <div className="font-medium break-words whitespace-normal">
                                                     {calendar.user.username ||
@@ -1564,11 +1850,31 @@ export const CalendarPage: React.FC = () => {
                                                     </Button>
                                                 </div>
                                             </div>
-                                            {days.map((day) => {
+                                            {days.map((day, dayIndex) => {
                                                 const key = dayKey(day);
                                                 const dayEvents =
                                                     eventsByDay.get(key) ?? [];
                                                 const isToday = key === dayKey(new Date());
+                                                const laneCount =
+                                                    isWeekView &&
+                                                    multiDayLayout.laneByDay
+                                                        ? multiDayLayout.laneByDay[
+                                                              dayIndex
+                                                          ] ?? 0
+                                                        : 0;
+                                                const extraPadding =
+                                                    isWeekView &&
+                                                    laneCount > 0
+                                                        ? multiDayPaddingHeight(
+                                                              laneCount
+                                                          )
+                                                        : 0;
+                                                const paddingTop =
+                                                    isWeekView &&
+                                                    extraPadding > 0
+                                                        ? DAY_CELL_BASE_PADDING +
+                                                          extraPadding
+                                                        : undefined;
 
                                                 return (
                                                     <div
@@ -1578,6 +1884,13 @@ export const CalendarPage: React.FC = () => {
                                                                 ? "bg-amber-50 dark:bg-amber-900/30 dark:ring-1 dark:ring-amber-400/40 dark:ring-inset"
                                                                 : ""
                                                         }`}
+                                                        style={
+                                                            paddingTop
+                                                                ? {
+                                                                      paddingTop,
+                                                                  }
+                                                                : undefined
+                                                        }
                                                     >
                                                         {dayEvents.length === 0 ? (
                                                             <div className="text-xs text-muted-foreground">
@@ -1605,6 +1918,15 @@ export const CalendarPage: React.FC = () => {
                                                                             <div className="font-medium">
                                                                                 {event.subject ||
                                                                                     "(件名なし)"}
+                                                                                {viewMode ===
+                                                                                    "day" &&
+                                                                                    isMultiDayEvent(
+                                                                                        event
+                                                                                    ) && (
+                                                                                        <span className="ml-1 text-[10px] text-muted-foreground">
+                                                                                            （跨日）
+                                                                                        </span>
+                                                                                    )}
                                                                                 {event.source ===
                                                                                     "google" && (
                                                                                     <span className="ml-1 text-[10px] text-muted-foreground">
@@ -1715,94 +2037,250 @@ export const CalendarPage: React.FC = () => {
                                         ).message}
                                     </div>
                                 )}
-                                <div className="grid grid-cols-7 gap-px rounded-md border bg-border text-xs">
-                                    {weekDayLabels.map((label) => (
-                                        <div
-                                            key={label}
-                                            className="bg-muted px-2 py-2 text-center font-medium text-muted-foreground"
-                                        >
-                                            {label}
-                                        </div>
-                                    ))}
-                                    {memberMonthDays.map((day) => {
-                                        const key = dayKey(day);
-                                        const events =
-                                            memberEventsByDay.get(key) ?? [];
-                                        const isOutside = !isSameMonth(
-                                            day,
-                                            memberCalendarMonth
-                                        );
-                                        const isTodayCell = isToday(day);
-                                        const isWeekend =
-                                            day.getDay() === 0 ||
-                                            day.getDay() === 6;
-
-                                        return (
+                                <div className="rounded-md border bg-border text-xs">
+                                    <div className="grid grid-cols-7 gap-px bg-border">
+                                        {weekDayLabels.map((label) => (
                                             <div
-                                                key={day.toISOString()}
-                                                className={`min-h-[110px] bg-background p-2 ${
-                                                    isOutside
-                                                        ? "bg-muted/40 text-muted-foreground"
-                                                        : ""
-                                                } ${
-                                                    isTodayCell
-                                                        ? "ring-2 ring-primary/40"
-                                                        : ""
-                                                }`}
+                                                key={label}
+                                                className="bg-muted px-2 py-2 text-center font-medium text-muted-foreground"
                                             >
-                                                <div
-                                                    className={`text-[11px] font-medium ${
-                                                        isWeekend && !isOutside
-                                                            ? day.getDay() === 0
-                                                                ? "text-rose-500"
-                                                                : "text-blue-500"
-                                                            : "text-foreground"
-                                                    }`}
-                                                >
-                                                    {format(day, "d")}
-                                                </div>
-                                                <div className="mt-1 space-y-1">
-                                                    {events.map(
-                                                        (event) => (
-                                                            <button
-                                                                type="button"
-                                                                key={event.id}
-                                                                className="w-full rounded bg-muted/70 px-1 py-0.5 text-left text-[10px] leading-tight break-words whitespace-normal transition hover:bg-muted"
-                                                                onClick={() => {
-                                                                    if (
-                                                                        activeMember
-                                                                    ) {
-                                                                        openEventDrawer(
-                                                                            event,
-                                                                            activeMember
-                                                                        );
-                                                                    }
+                                                {label}
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="space-y-px bg-border">
+                                        {memberMonthWeeks.map(
+                                            (weekDays, weekIndex) => {
+                                                const weekKeys = weekDays.map(
+                                                    (day) => dayKey(day)
+                                                );
+                                                const multiDayLayout =
+                                                    buildMultiDayLayout(
+                                                        memberMultiDayEvents,
+                                                        weekKeys
+                                                    );
+                                                const multiDayPaddingHeight = (
+                                                    lanes: number
+                                                ) =>
+                                                    lanes > 0
+                                                        ? lanes *
+                                                              (MULTI_DAY_BAR_HEIGHT +
+                                                                  MULTI_DAY_BAR_GAP) +
+                                                          MULTI_DAY_LIST_GAP
+                                                        : 0;
+
+                                                return (
+                                                    <div
+                                                        key={`member-week-${weekIndex}`}
+                                                        className="relative grid grid-cols-7 gap-px bg-border"
+                                                    >
+                                                        {multiDayLayout.bars
+                                                            .length > 0 && (
+                                                            <div
+                                                                className="absolute top-0 z-10"
+                                                                style={{
+                                                                    left: 0,
+                                                                    right: 0,
+                                                                    display:
+                                                                        "grid",
+                                                                    gridTemplateColumns:
+                                                                        "repeat(7, minmax(0, 1fr))",
+                                                                    gridAutoRows: `${MULTI_DAY_BAR_HEIGHT}px`,
+                                                                    rowGap: `${MULTI_DAY_BAR_GAP}px`,
+                                                                    columnGap:
+                                                                        "1px",
+                                                                    paddingTop: `${MULTI_DAY_BAR_GAP}px`,
+                                                                    height:
+                                                                        multiDayLayout.laneCount *
+                                                                            (MULTI_DAY_BAR_HEIGHT +
+                                                                                MULTI_DAY_BAR_GAP) +
+                                                                        MULTI_DAY_BAR_GAP,
                                                                 }}
                                                             >
-                                                                <div className="font-medium">
-                                                                    {formatTimeInJst(
-                                                                        event
-                                                                            .start
-                                                                            .dateTime
-                                                                    )}
+                                                                {multiDayLayout.bars.map(
+                                                                    (bar) => (
+                                                                        <button
+                                                                            type="button"
+                                                                            key={`member-${bar.event.id}-${bar.startIndex}-${bar.endIndex}`}
+                                                                            className="mx-1 truncate rounded border bg-muted/70 px-1 text-left text-[10px] leading-tight transition hover:bg-muted"
+                                                                            style={{
+                                                                                gridColumn: `${
+                                                                                    bar.startIndex +
+                                                                                    1
+                                                                                } / ${
+                                                                                    bar.endIndex +
+                                                                                    2
+                                                                                }`,
+                                                                                gridRow:
+                                                                                    bar.lane +
+                                                                                    1,
+                                                                            }}
+                                                                            onClick={() => {
+                                                                                if (
+                                                                                    activeMember
+                                                                                ) {
+                                                                                    openEventDrawer(
+                                                                                        bar.event,
+                                                                                        activeMember
+                                                                                    );
+                                                                                }
+                                                                            }}
+                                                                        >
+                                                                            <span className="font-medium">
+                                                                                {bar
+                                                                                    .event
+                                                                                    .isAllDay
+                                                                                    ? "終日"
+                                                                                    : formatTimeInJst(
+                                                                                          bar
+                                                                                              .event
+                                                                                              .start
+                                                                                              .dateTime
+                                                                                      )}{" "}
+                                                                                {bar
+                                                                                    .event
+                                                                                    .subject ||
+                                                                                    "(件名なし)"}
+                                                                                {bar
+                                                                                    .event
+                                                                                    .source ===
+                                                                                    "google" && (
+                                                                                    <span className="ml-1 text-[9px] text-muted-foreground">
+                                                                                        （Googleカレンダー）
+                                                                                    </span>
+                                                                                )}
+                                                                            </span>
+                                                                        </button>
+                                                                    )
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                        {weekDays.map(
+                                                            (day, dayIndex) => {
+                                                            const key =
+                                                                dayKey(day);
+                                                            const events =
+                                                                memberEventsByDay.get(
+                                                                    key
+                                                                ) ?? [];
+                                                            const isOutside =
+                                                                !isSameMonth(
+                                                                    day,
+                                                                    memberCalendarMonth
+                                                                );
+                                                            const isTodayCell =
+                                                                isToday(day);
+                                                            const isWeekend =
+                                                                day.getDay() ===
+                                                                    0 ||
+                                                                day.getDay() ===
+                                                                    6;
+                                                            const laneCount =
+                                                                multiDayLayout
+                                                                    .laneByDay?.[
+                                                                    dayIndex
+                                                                ] ?? 0;
+                                                            const extraPadding =
+                                                                laneCount > 0
+                                                                    ? multiDayPaddingHeight(
+                                                                          laneCount
+                                                                      )
+                                                                    : 0;
+                                                            const paddingTop =
+                                                                extraPadding >
+                                                                0
+                                                                    ? MONTH_CELL_BASE_PADDING +
+                                                                      extraPadding
+                                                                    : undefined;
+
+                                                            return (
+                                                                <div
+                                                                    key={day.toISOString()}
+                                                                    className={`min-h-[110px] bg-background p-2 ${
+                                                                        isOutside
+                                                                            ? "bg-muted/40 text-muted-foreground"
+                                                                            : ""
+                                                                    } ${
+                                                                        isTodayCell
+                                                                            ? "ring-2 ring-primary/40"
+                                                                            : ""
+                                                                    }`}
+                                                                    style={
+                                                                        paddingTop
+                                                                            ? {
+                                                                                  paddingTop,
+                                                                              }
+                                                                            : undefined
+                                                                    }
+                                                                >
+                                                                    <div
+                                                                        className={`text-[11px] font-medium ${
+                                                                            isWeekend &&
+                                                                            !isOutside
+                                                                                ? day.getDay() ===
+                                                                                  0
+                                                                                    ? "text-rose-500"
+                                                                                    : "text-blue-500"
+                                                                                : "text-foreground"
+                                                                        }`}
+                                                                    >
+                                                                        {format(
+                                                                            day,
+                                                                            "d"
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="mt-1 space-y-1">
+                                                                        {events.map(
+                                                                            (
+                                                                                event
+                                                                            ) => (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    key={
+                                                                                        event.id
+                                                                                    }
+                                                                                    className="w-full rounded bg-muted/70 px-1 py-0.5 text-left text-[10px] leading-tight break-words whitespace-normal transition hover:bg-muted"
+                                                                                    onClick={() => {
+                                                                                        if (
+                                                                                            activeMember
+                                                                                        ) {
+                                                                                            openEventDrawer(
+                                                                                                event,
+                                                                                                activeMember
+                                                                                            );
+                                                                                        }
+                                                                                    }}
+                                                                                >
+                                                                                    <div className="font-medium">
+                                                                                        {formatTimeInJst(
+                                                                                            event
+                                                                                                .start
+                                                                                                .dateTime
+                                                                                        )}
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        {event.subject ||
+                                                                                            "(件名なし)"}
+                                                                                        {event.source ===
+                                                                                            "google" && (
+                                                                                            <span className="ml-1 text-[9px] text-muted-foreground">
+                                                                                                （Googleカレンダー）
+                                                                                            </span>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </button>
+                                                                            )
+                                                                        )}
+                                                                    </div>
                                                                 </div>
-                                                                <div>
-                                                                    {event.subject ||
-                                                                        "(件名なし)"}
-                                                                    {event.source ===
-                                                                        "google" && (
-                                                                        <span className="ml-1 text-[9px] text-muted-foreground">
-                                                                            （Googleカレンダー）
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            </button>
-                                                        )
-                                                    )}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
+                                                            );
+                                                        }
+                                                        )}
+                                                    </div>
+                                                );
+                                            }
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                             <DrawerFooter className="border-t px-6 py-3">
