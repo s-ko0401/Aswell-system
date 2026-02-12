@@ -3,9 +3,12 @@
 namespace App\Services\Auth;
 
 use App\Http\Requests\Auth\LoginRequest;
+use App\Http\Requests\Auth\UpdatePasswordRequest;
 use App\Support\PagePermissions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
 
 class AuthService
 {
@@ -60,6 +63,26 @@ class AuthService
         }
 
         auth('api')->logout();
+
+        return response()->json([
+            'success' => true,
+            'data' => (object) [],
+            'message' => '',
+        ]);
+    }
+
+    public function updatePassword(UpdatePasswordRequest $request): JsonResponse
+    {
+        $user = auth('api')->user();
+
+        if (!$user || !Hash::check($request->input('current_password'), $user->password)) {
+            throw ValidationException::withMessages([
+                'current_password' => ['現在のパスワードが正しくありません。'],
+            ]);
+        }
+
+        $user->password = Hash::make($request->input('new_password'));
+        $user->save();
 
         return response()->json([
             'success' => true,
