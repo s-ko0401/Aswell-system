@@ -45,7 +45,7 @@ export function UsersPage() {
   const isAdmin = currentUser?.role === UserRole.SYSTEM_ADMIN;
 
   const usersQuery = useQuery<UsersResponse, Error>({
-    queryKey: ["users", currentPage],
+    queryKey: ["users", currentPage, selectedRole, debouncedSearchQuery, perPage],
     queryFn: async () => {
       const { data } = await api.get("/users", {
         params: {
