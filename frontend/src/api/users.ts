@@ -26,5 +26,9 @@ export const getUsers = async (page = 1, perPage = 20) => {
 
 export const getUsersSelection = async () => {
     const { data } = await api.get("/users/selection");
-    return data as { success: boolean; data: { id: number; username: string }[]; message: string };
+    return data as {
+        success: boolean;
+        data: { id: number; username: string; email: string; role: number }[];
+        message: string;
+    };
 };

@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { z } from "zod";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { AxiosError } from "axios";
 import { Calendar } from "lucide-react";
 
 import api from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { type ApiErrorResponse } from "@/types/api";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -24,6 +29,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Spinner } from "@/components/ui/spinner";
 import { USER_ROLE_LABELS, type UserRoleId } from "@/lib/roles";
 
@@ -45,6 +52,26 @@ type GoogleAclResponse = {
   viewer_ids: number[];
 };
 
+const passwordSchema = z
+  .object({
+    current_password: z
+      .string()
+      .min(1, "現在のパスワードを入力してください。"),
+    new_password: z
+      .string()
+      .min(1, "新しいパスワードを入力してください。")
+      .min(8, "新しいパスワードは8文字以上で入力してください。"),
+    new_password_confirmation: z
+      .string()
+      .min(1, "新しいパスワード（確認）を入力してください。"),
+  })
+  .refine((data) => data.new_password === data.new_password_confirmation, {
+    message: "新しいパスワードが一致しません。",
+    path: ["new_password_confirmation"],
+  });
+
+type PasswordFormValues = z.infer<typeof passwordSchema>;
+
 export function ProfilePage() {
   const { data: user, isLoading } = useAuth();
   const { toast } = useToast();
@@ -54,12 +81,21 @@ export function ProfilePage() {
   const googleParam = searchParams.get("google");
   const [isAclOpen, setIsAclOpen] = useState(false);
   const [aclSearch, setAclSearch] = useState("");
+  const [isPasswordOpen, setIsPasswordOpen] = useState(false);
   const [selectedViewerIds, setSelectedViewerIds] = useState<Set<number>>(
     new Set(),
   );
   const aclInitialized = useRef(false);
+  const passwordForm = useForm<PasswordFormValues>({
+    resolver: zodResolver(passwordSchema),
+    defaultValues: {
+      current_password: "",
+      new_password: "",
+      new_password_confirmation: "",
+    },
+  });
 
-  const statusQuery = useQuery({
+  const statusQuery = useQuery<IntegrationStatus, Error>({
     queryKey: ["integrationsStatus"],
     queryFn: async () => {
       const { data } = await api.get("/integrations/status");
@@ -67,7 +103,7 @@ export function ProfilePage() {
     },
   });
 
-  const aclUsersQuery = useQuery({
+  const aclUsersQuery = useQuery<AclUser[], Error>({
     queryKey: ["googleAclUsers"],
     enabled: Boolean(statusQuery.data?.google?.connected),
     queryFn: async () => {
@@ -76,19 +112,12 @@ export function ProfilePage() {
     },
   });
 
-  const aclQuery = useQuery({
+  const aclQuery = useQuery<GoogleAclResponse, Error>({
     queryKey: ["googleAcl"],
     enabled: Boolean(statusQuery.data?.google?.connected),
     queryFn: async () => {
       const { data } = await api.get("/integrations/google/acl");
       return data.data as GoogleAclResponse;
-    },
-    onSuccess: (data) => {
-      if (!isAclOpen || aclInitialized.current) {
-        return;
-      }
-      setSelectedViewerIds(new Set(data.viewer_ids ?? []));
-      aclInitialized.current = true;
     },
   });
 
@@ -150,6 +179,41 @@ export function ProfilePage() {
     },
   });
 
+  const passwordMutation = useMutation({
+    mutationFn: async (values: PasswordFormValues) => {
+      const { data } = await api.put("/auth/password", values);
+      return data;
+    },
+    onSuccess: () => {
+      toast({
+        title: "パスワードを更新しました",
+        description: "次回ログインから新しいパスワードが有効になります。",
+      });
+      setIsPasswordOpen(false);
+      passwordForm.reset();
+    },
+    onError: (error: AxiosError<ApiErrorResponse>) => {
+      const errorData = error.response?.data;
+      const details = errorData?.details || errorData?.error?.details;
+      if (details) {
+        Object.entries(details).forEach(([key, messages]) => {
+          if (messages && messages.length > 0) {
+            passwordForm.setError(key as keyof PasswordFormValues, {
+              type: "manual",
+              message: messages.join("\n"),
+            });
+          }
+        });
+        return;
+      }
+      toast({
+        variant: "destructive",
+        title: "更新に失敗しました",
+        description: "入力内容を確認してください。",
+      });
+    },
+  });
+
   useEffect(() => {
     if (googleParam === "connected") {
       toast({
@@ -169,6 +233,16 @@ export function ProfilePage() {
       navigate("/profile", { replace: true });
     }
   }, [googleParam, navigate, queryClient, toast]);
+
+  useEffect(() => {
+    if (isPasswordOpen) {
+      passwordForm.reset({
+        current_password: "",
+        new_password: "",
+        new_password_confirmation: "",
+      });
+    }
+  }, [isPasswordOpen, passwordForm]);
 
   const aclUsers = aclUsersQuery.data ?? [];
   const aclCount = aclQuery.data?.viewer_ids?.length ?? 0;
@@ -216,10 +290,23 @@ export function ProfilePage() {
       aclInitialized.current = false;
       return;
     }
-    if (aclQuery.data && !aclInitialized.current) {
-      setSelectedViewerIds(new Set(aclQuery.data.viewer_ids ?? []));
+    const initializeAclSelection = (data?: GoogleAclResponse) => {
+      if (!data || aclInitialized.current) {
+        return;
+      }
+      setSelectedViewerIds(new Set(data.viewer_ids ?? []));
       aclInitialized.current = true;
+    };
+    initializeAclSelection(aclQuery.data);
+    if (!aclInitialized.current) {
+      void aclQuery.refetch().then((result) => {
+        initializeAclSelection(result.data);
+      });
     }
+  };
+  const handlePasswordSubmit = (values: PasswordFormValues) => {
+    passwordForm.clearErrors();
+    passwordMutation.mutate(values);
   };
 
   return (
@@ -251,6 +338,21 @@ export function ProfilePage() {
           <div className="grid gap-1">
             <span className="text-muted-foreground">権限</span>
             <span className="font-medium">{roleLabel}</span>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+            <div className="space-y-1">
+              <div className="text-muted-foreground">パスワード</div>
+              <div className="text-xs text-muted-foreground">
+                ログイン用のパスワードを変更できます。
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsPasswordOpen(true)}
+            >
+              パスワード変更
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -432,6 +534,79 @@ export function ProfilePage() {
               {aclMutation.isPending ? "保存中..." : "保存"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isPasswordOpen} onOpenChange={setIsPasswordOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>パスワード変更</DialogTitle>
+            <DialogDescription>
+              現在のパスワードと新しいパスワードを入力してください。
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-4"
+            onSubmit={passwordForm.handleSubmit(handlePasswordSubmit)}
+          >
+            <div className="space-y-1">
+              <Label htmlFor="current_password">現在のパスワード</Label>
+              <PasswordInput
+                id="current_password"
+                autoComplete="current-password"
+                {...passwordForm.register("current_password")}
+              />
+              {passwordForm.formState.errors.current_password && (
+                <p className="text-xs text-destructive">
+                  {passwordForm.formState.errors.current_password.message}
+                </p>
+              )}
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="new_password">新しいパスワード</Label>
+              <PasswordInput
+                id="new_password"
+                autoComplete="new-password"
+                {...passwordForm.register("new_password")}
+              />
+              {passwordForm.formState.errors.new_password && (
+                <p className="text-xs text-destructive">
+                  {passwordForm.formState.errors.new_password.message}
+                </p>
+              )}
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="new_password_confirmation">
+                新しいパスワード（確認）
+              </Label>
+              <PasswordInput
+                id="new_password_confirmation"
+                autoComplete="new-password"
+                {...passwordForm.register("new_password_confirmation")}
+              />
+              {passwordForm.formState.errors.new_password_confirmation && (
+                <p className="text-xs text-destructive">
+                  {
+                    passwordForm.formState.errors.new_password_confirmation
+                      .message
+                  }
+                </p>
+              )}
+            </div>
+            <DialogFooter className="gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsPasswordOpen(false)}
+                disabled={passwordMutation.isPending}
+              >
+                閉じる
+              </Button>
+              <Button type="submit" disabled={passwordMutation.isPending}>
+                {passwordMutation.isPending ? "更新中..." : "更新"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

@@ -51,7 +51,7 @@ export function AuthLogsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const perPage = 20;
 
-  const logsQuery = useQuery({
+  const logsQuery = useQuery<AuthLogsResponse, Error>({
     queryKey: ["authLogs", currentPage],
     queryFn: async () => {
       const { data } = await api.get("/auth-logs", { params: { page: currentPage, per_page: perPage } });
@@ -59,12 +59,6 @@ export function AuthLogsPage() {
         data: data.data as AuthLogItem[],
         meta: data.meta as AuthLogsResponse["meta"],
       } satisfies AuthLogsResponse;
-    },
-    onSuccess: (payload) => {
-      const totalPages = Math.max(1, Math.ceil(payload.meta.total / perPage));
-      if (currentPage > totalPages) {
-        setCurrentPage(totalPages);
-      }
     },
   });
 
