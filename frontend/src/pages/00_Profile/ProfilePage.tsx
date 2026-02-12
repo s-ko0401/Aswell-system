@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { z } from "zod";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { AxiosError } from "axios";
 import { Calendar } from "lucide-react";
 
 import api from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { type ApiErrorResponse } from "@/types/api";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -15,9 +20,19 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Spinner } from "@/components/ui/spinner";
+import { USER_ROLE_LABELS, type UserRoleId } from "@/lib/roles";
 
 type IntegrationStatus = {
   google: {
@@ -37,6 +52,26 @@ type GoogleAclResponse = {
   viewer_ids: number[];
 };
 
+const passwordSchema = z
+  .object({
+    current_password: z
+      .string()
+      .min(1, "現在のパスワードを入力してください。"),
+    new_password: z
+      .string()
+      .min(1, "新しいパスワードを入力してください。")
+      .min(8, "新しいパスワードは8文字以上で入力してください。"),
+    new_password_confirmation: z
+      .string()
+      .min(1, "新しいパスワード（確認）を入力してください。"),
+  })
+  .refine((data) => data.new_password === data.new_password_confirmation, {
+    message: "新しいパスワードが一致しません。",
+    path: ["new_password_confirmation"],
+  });
+
+type PasswordFormValues = z.infer<typeof passwordSchema>;
+
 export function ProfilePage() {
   const { data: user, isLoading } = useAuth();
   const { toast } = useToast();
@@ -46,8 +81,19 @@ export function ProfilePage() {
   const googleParam = searchParams.get("google");
   const [isAclOpen, setIsAclOpen] = useState(false);
   const [aclSearch, setAclSearch] = useState("");
-  const [selectedViewerIds, setSelectedViewerIds] = useState<Set<number>>(new Set());
+  const [isPasswordOpen, setIsPasswordOpen] = useState(false);
+  const [selectedViewerIds, setSelectedViewerIds] = useState<Set<number>>(
+    new Set(),
+  );
   const aclInitialized = useRef(false);
+  const passwordForm = useForm<PasswordFormValues>({
+    resolver: zodResolver(passwordSchema),
+    defaultValues: {
+      current_password: "",
+      new_password: "",
+      new_password_confirmation: "",
+    },
+  });
 
   const statusQuery = useQuery<IntegrationStatus, Error>({
     queryKey: ["integrationsStatus"],
@@ -133,6 +179,41 @@ export function ProfilePage() {
     },
   });
 
+  const passwordMutation = useMutation({
+    mutationFn: async (values: PasswordFormValues) => {
+      const { data } = await api.put("/auth/password", values);
+      return data;
+    },
+    onSuccess: () => {
+      toast({
+        title: "パスワードを更新しました",
+        description: "次回ログインから新しいパスワードが有効になります。",
+      });
+      setIsPasswordOpen(false);
+      passwordForm.reset();
+    },
+    onError: (error: AxiosError<ApiErrorResponse>) => {
+      const errorData = error.response?.data;
+      const details = errorData?.details || errorData?.error?.details;
+      if (details) {
+        Object.entries(details).forEach(([key, messages]) => {
+          if (messages && messages.length > 0) {
+            passwordForm.setError(key as keyof PasswordFormValues, {
+              type: "manual",
+              message: messages.join("\n"),
+            });
+          }
+        });
+        return;
+      }
+      toast({
+        variant: "destructive",
+        title: "更新に失敗しました",
+        description: "入力内容を確認してください。",
+      });
+    },
+  });
+
   useEffect(() => {
     if (googleParam === "connected") {
       toast({
@@ -153,6 +234,16 @@ export function ProfilePage() {
     }
   }, [googleParam, navigate, queryClient, toast]);
 
+  useEffect(() => {
+    if (isPasswordOpen) {
+      passwordForm.reset({
+        current_password: "",
+        new_password: "",
+        new_password_confirmation: "",
+      });
+    }
+  }, [isPasswordOpen, passwordForm]);
+
   const aclUsers = aclUsersQuery.data ?? [];
   const aclCount = aclQuery.data?.viewer_ids?.length ?? 0;
   const normalizedAclSearch = aclSearch.trim().toLowerCase();
@@ -169,7 +260,8 @@ export function ProfilePage() {
     }
 
     return base.filter((aclUser) => {
-      const label = `${aclUser.username ?? ""} ${aclUser.email ?? ""}`.toLowerCase();
+      const label =
+        `${aclUser.username ?? ""} ${aclUser.email ?? ""}`.toLowerCase();
       return tokens.every((token) => label.includes(token));
     });
   }, [aclUsers, normalizedAclSearch, userId]);
@@ -183,10 +275,14 @@ export function ProfilePage() {
   }
 
   if (!user) {
-    return <div className="text-sm text-destructive">ユーザー情報が取得できません。</div>;
+    return (
+      <div className="text-sm text-destructive">
+        ユーザー情報が取得できません。
+      </div>
+    );
   }
 
-  const roleLabel = user.role === 1 ? "システム管理者" : "一般ユーザー";
+  const roleLabel = USER_ROLE_LABELS[user.role as UserRoleId] ?? "Unknown";
   const googleStatus = statusQuery.data?.google;
   const handleAclOpenChange = (open: boolean) => {
     setIsAclOpen(open);
@@ -207,6 +303,10 @@ export function ProfilePage() {
         initializeAclSelection(result.data);
       });
     }
+  };
+  const handlePasswordSubmit = (values: PasswordFormValues) => {
+    passwordForm.clearErrors();
+    passwordMutation.mutate(values);
   };
 
   return (
@@ -239,13 +339,30 @@ export function ProfilePage() {
             <span className="text-muted-foreground">権限</span>
             <span className="font-medium">{roleLabel}</span>
           </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+            <div className="space-y-1">
+              <div className="text-muted-foreground">パスワード</div>
+              <div className="text-xs text-muted-foreground">
+                ログイン用のパスワードを変更できます。
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsPasswordOpen(true)}
+            >
+              パスワード変更
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
       <div className="space-y-4">
         <div>
           <h2 className="text-lg font-semibold">Connectors</h2>
-          <p className="text-sm text-muted-foreground">外部カレンダーと連携できます。</p>
+          <p className="text-sm text-muted-foreground">
+            外部カレンダーと連携できます。
+          </p>
         </div>
 
         <Card>
@@ -260,7 +377,9 @@ export function ProfilePage() {
                   自分の予定を読み取り専用で連携します。
                 </CardDescription>
               </div>
-              <Badge variant={googleStatus?.connected ? "default" : "secondary"}>
+              <Badge
+                variant={googleStatus?.connected ? "default" : "secondary"}
+              >
                 {googleStatus?.connected ? "Connected" : "Not connected"}
               </Badge>
             </div>
@@ -279,50 +398,55 @@ export function ProfilePage() {
               </div>
             )}
 
-            {!statusQuery.isLoading && !statusQuery.isError && !googleStatus?.connected && (
-              <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-                <span className="text-muted-foreground">未接続です。</span>
-                <Button
-                  onClick={() => connectMutation.mutate()}
-                  disabled={connectMutation.isPending}
-                >
-                  {connectMutation.isPending ? "接続中..." : "接続"}
-                </Button>
-              </div>
-            )}
+            {!statusQuery.isLoading &&
+              !statusQuery.isError &&
+              !googleStatus?.connected && (
+                <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                  <span className="text-muted-foreground">未接続です。</span>
+                  <Button
+                    onClick={() => connectMutation.mutate()}
+                    disabled={connectMutation.isPending}
+                  >
+                    {connectMutation.isPending ? "接続中..." : "接続"}
+                  </Button>
+                </div>
+              )}
 
-            {!statusQuery.isLoading && !statusQuery.isError && googleStatus?.connected && (
-              <div className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="text-sm">
-                    <div className="text-muted-foreground">接続アカウント</div>
-                    <div className="font-medium">{googleStatus.email}</div>
-                    <div className="text-xs text-muted-foreground">
-                      公開先: {aclCount}人（自分は常に表示）
+            {!statusQuery.isLoading &&
+              !statusQuery.isError &&
+              googleStatus?.connected && (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="text-sm">
+                      <div className="text-muted-foreground">
+                        接続アカウント
+                      </div>
+                      <div className="font-medium">{googleStatus.email}</div>
+                      <div className="text-xs text-muted-foreground">
+                        公開先: {aclCount}人（自分は常に表示）
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsAclOpen(true)}
+                        disabled={aclUsersQuery.isLoading || aclQuery.isLoading}
+                      >
+                        表示設定
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => disconnectMutation.mutate()}
+                        disabled={disconnectMutation.isPending}
+                      >
+                        {disconnectMutation.isPending ? "解除中..." : "切断"}
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setIsAclOpen(true)}
-                      disabled={aclUsersQuery.isLoading || aclQuery.isLoading}
-                    >
-                      表示設定
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => disconnectMutation.mutate()}
-                      disabled={disconnectMutation.isPending}
-                    >
-                      {disconnectMutation.isPending ? "解除中..." : "切断"}
-                    </Button>
-                  </div>
                 </div>
-
-              </div>
-            )}
+              )}
           </CardContent>
         </Card>
       </div>
@@ -384,7 +508,9 @@ export function ProfilePage() {
                             }}
                           />
                           <div className="space-y-1">
-                            <div className="font-medium">{aclUser.username}</div>
+                            <div className="font-medium">
+                              {aclUser.username}
+                            </div>
                             <div className="text-xs text-muted-foreground break-all">
                               {aclUser.email}
                             </div>
@@ -402,14 +528,85 @@ export function ProfilePage() {
               閉じる
             </Button>
             <Button
-              onClick={() =>
-                aclMutation.mutate(Array.from(selectedViewerIds))
-              }
+              onClick={() => aclMutation.mutate(Array.from(selectedViewerIds))}
               disabled={aclMutation.isPending}
             >
               {aclMutation.isPending ? "保存中..." : "保存"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isPasswordOpen} onOpenChange={setIsPasswordOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>パスワード変更</DialogTitle>
+            <DialogDescription>
+              現在のパスワードと新しいパスワードを入力してください。
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-4"
+            onSubmit={passwordForm.handleSubmit(handlePasswordSubmit)}
+          >
+            <div className="space-y-1">
+              <Label htmlFor="current_password">現在のパスワード</Label>
+              <PasswordInput
+                id="current_password"
+                autoComplete="current-password"
+                {...passwordForm.register("current_password")}
+              />
+              {passwordForm.formState.errors.current_password && (
+                <p className="text-xs text-destructive">
+                  {passwordForm.formState.errors.current_password.message}
+                </p>
+              )}
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="new_password">新しいパスワード</Label>
+              <PasswordInput
+                id="new_password"
+                autoComplete="new-password"
+                {...passwordForm.register("new_password")}
+              />
+              {passwordForm.formState.errors.new_password && (
+                <p className="text-xs text-destructive">
+                  {passwordForm.formState.errors.new_password.message}
+                </p>
+              )}
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="new_password_confirmation">
+                新しいパスワード（確認）
+              </Label>
+              <PasswordInput
+                id="new_password_confirmation"
+                autoComplete="new-password"
+                {...passwordForm.register("new_password_confirmation")}
+              />
+              {passwordForm.formState.errors.new_password_confirmation && (
+                <p className="text-xs text-destructive">
+                  {
+                    passwordForm.formState.errors.new_password_confirmation
+                      .message
+                  }
+                </p>
+              )}
+            </div>
+            <DialogFooter className="gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsPasswordOpen(false)}
+                disabled={passwordMutation.isPending}
+              >
+                閉じる
+              </Button>
+              <Button type="submit" disabled={passwordMutation.isPending}>
+                {passwordMutation.isPending ? "更新中..." : "更新"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

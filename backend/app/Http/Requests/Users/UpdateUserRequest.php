@@ -20,6 +20,7 @@ class UpdateUserRequest extends FormRequest
             'username' => ['required', 'string', 'max:100'],
             'email' => ['required', 'email', 'max:255', "unique:users,email,{$userId}"],
             'loginid' => ['required', 'string', 'max:100', "unique:users,loginid,{$userId}"],
+            'staff_number' => ['required', 'string', 'max:100', "unique:users,staff_number,{$userId}"],
             'password' => ['nullable', 'string', 'min:8'],
             'role' => ['required', 'integer', 'in:1,2'],
             'page_permissions' => ['nullable', 'array'],
@@ -27,6 +28,15 @@ class UpdateUserRequest extends FormRequest
                 'string',
                 Rule::in(config('page_permissions.pages', [])),
             ],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'email.unique'          => 'そのメールアドレスは既に使用されています。',
+            'loginid.unique'        => 'そのログインIDは既に使用されています。',
+            'staff_number.unique'   => 'その社員番号は既に使用されています。',
         ];
     }
 }
