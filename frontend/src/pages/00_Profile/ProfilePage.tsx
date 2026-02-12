@@ -59,7 +59,7 @@ export function ProfilePage() {
   );
   const aclInitialized = useRef(false);
 
-  const statusQuery = useQuery({
+  const statusQuery = useQuery<IntegrationStatus, Error>({
     queryKey: ["integrationsStatus"],
     queryFn: async () => {
       const { data } = await api.get("/integrations/status");
@@ -67,7 +67,7 @@ export function ProfilePage() {
     },
   });
 
-  const aclUsersQuery = useQuery({
+  const aclUsersQuery = useQuery<AclUser[], Error>({
     queryKey: ["googleAclUsers"],
     enabled: Boolean(statusQuery.data?.google?.connected),
     queryFn: async () => {
@@ -76,19 +76,12 @@ export function ProfilePage() {
     },
   });
 
-  const aclQuery = useQuery({
+  const aclQuery = useQuery<GoogleAclResponse, Error>({
     queryKey: ["googleAcl"],
     enabled: Boolean(statusQuery.data?.google?.connected),
     queryFn: async () => {
       const { data } = await api.get("/integrations/google/acl");
       return data.data as GoogleAclResponse;
-    },
-    onSuccess: (data) => {
-      if (!isAclOpen || aclInitialized.current) {
-        return;
-      }
-      setSelectedViewerIds(new Set(data.viewer_ids ?? []));
-      aclInitialized.current = true;
     },
   });
 
@@ -216,9 +209,18 @@ export function ProfilePage() {
       aclInitialized.current = false;
       return;
     }
-    if (aclQuery.data && !aclInitialized.current) {
-      setSelectedViewerIds(new Set(aclQuery.data.viewer_ids ?? []));
+    const initializeAclSelection = (data?: GoogleAclResponse) => {
+      if (!data || aclInitialized.current) {
+        return;
+      }
+      setSelectedViewerIds(new Set(data.viewer_ids ?? []));
       aclInitialized.current = true;
+    };
+    initializeAclSelection(aclQuery.data);
+    if (!aclInitialized.current) {
+      void aclQuery.refetch().then((result) => {
+        initializeAclSelection(result.data);
+      });
     }
   };
 
