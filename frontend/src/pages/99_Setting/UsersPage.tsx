@@ -1,10 +1,12 @@
 ﻿import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 import { Edit, MoreVertical, Plus, Trash2, Shield } from "lucide-react";
+import AppLogoIcon from "@/components/icons/AppLogo";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Drawer,
@@ -42,6 +44,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -54,15 +57,38 @@ import api from "@/lib/api";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { PAGE_PERMISSION_OPTIONS, normalizePagePermissions, type PagePermissionKey } from "@/lib/pagePermissions";
+import {
+  PAGE_PERMISSION_OPTIONS,
+  normalizePagePermissions,
+  type PagePermissionKey,
+} from "@/lib/pagePermissions";
+import {
+  USER_ROLE_LABELS,
+  USER_ROLE_OPTIONS,
+  UserRole,
+  type UserRoleId,
+} from "@/lib/roles";
 
-const schema = z.object({
-  username: z.string().min(1, "必須です").max(100, "100文字以内"),
-  email: z.string().email("メール形式が不正です").max(255, "255文字以内"),
-  loginid: z.string().min(1, "必須です").max(100, "100文字以内"),
-  password: z.string().min(8, "8文字以上").optional().or(z.literal("")),
-  role: z.union([z.literal("1"), z.literal("2")]),
-});
+const schema = z
+  .object({
+    username: z
+      .string()
+      .min(1, "必須です")
+      .max(100, "100文字以内")
+      .regex(/^[^ -~｡-ﾟ]+$/, "全角で入力してください"),
+    email: z.string().email("メール形式が不正です").max(255, "255文字以内"),
+    loginid: z.string().min(1, "必須です").max(100, "100文字以内"),
+    password: z.string().min(8, "8文字以上").optional().or(z.literal("")),
+    confirmPassword: z.string().optional().or(z.literal("")),
+    role: z.union([
+      z.literal(String(UserRole.SYSTEM_ADMIN)),
+      z.literal(String(UserRole.GENERAL_USER)),
+    ]),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "パスワードが一致しません",
+    path: ["confirmPassword"],
+  });
 
 type UserFormValues = z.infer<typeof schema>;
 
@@ -75,6 +101,7 @@ type UserItem = {
   page_permissions?: string[];
   created_at: string | null;
   updated_at: string | null;
+  deleted?: boolean;
 };
 
 type UsersResponse = {
@@ -83,6 +110,10 @@ type UsersResponse = {
     page: number;
     per_page: number;
     total: number;
+    roles: {
+      id: number;
+      count: number;
+    }[];
   };
 };
 
@@ -101,13 +132,16 @@ export function UsersPage() {
   const [editingUserId, setEditingUserId] = useState<number | null>(null);
   const [permissionOpen, setPermissionOpen] = useState(false);
   const [permissionUser, setPermissionUser] = useState<UserItem | null>(null);
-  const [selectedPermissions, setSelectedPermissions] = useState<PagePermissionKey[]>([]);
+  const [selectedPermissions, setSelectedPermissions] = useState<
+    PagePermissionKey[]
+  >([]);
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedRole, setSelectedRole] = useState("all");
   const perPage = 20;
   const isEditMode = editingUserId !== null;
-  const isAdmin = currentUser?.role === 1;
+  const isAdmin = currentUser?.role === UserRole.SYSTEM_ADMIN;
   const { toast } = useToast();
 
   const form = useForm<UserFormValues>({
@@ -117,20 +151,44 @@ export function UsersPage() {
       email: "",
       loginid: "",
       password: "",
-      role: "2",
+      confirmPassword: "",
+      role: String(UserRole.GENERAL_USER),
     },
   });
 
-  const usersQuery = useQuery<UsersResponse, Error>({
-    queryKey: ["users", currentPage],
+  const usersQuery = useQuery({
+    queryKey: ["users", currentPage, selectedRole],
     queryFn: async () => {
-      const { data } = await api.get("/users", { params: { page: currentPage, per_page: perPage } });
+      const { data } = await api.get("/users", {
+        params: {
+          page: currentPage,
+          per_page: perPage,
+          role: selectedRole === "all" ? undefined : selectedRole,
+        },
+      });
       return {
         data: data.data as UserItem[],
         meta: data.meta as UsersResponse["meta"],
       } satisfies UsersResponse;
     },
+    placeholderData: keepPreviousData,
   });
+
+  const users = useMemo(() => usersQuery.data?.data ?? [], [usersQuery.data]);
+  const total = usersQuery.data?.meta.total ?? 0;
+  const roleCounts = usersQuery.data?.meta.roles ?? [];
+  const allCount = roleCounts.reduce((acc, curr) => acc + curr.count, 0);
+  const isFetching = usersQuery.isFetching;
+
+  const getRoleCount = (roleId: number) => {
+    return roleCounts.find((r) => r.id === roleId)?.count ?? 0;
+  };
+
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+
+  if (usersQuery.data && currentPage > totalPages) {
+    setCurrentPage(totalPages);
+  }
 
   const createMutation = useMutation({
     mutationFn: async (values: UserFormValues) => {
@@ -147,7 +205,8 @@ export function UsersPage() {
         email: "",
         loginid: "",
         password: "",
-        role: "2",
+        confirmPassword: "",
+        role: String(UserRole.GENERAL_USER),
       });
       setOpen(false);
       setEditingUserId(null);
@@ -192,7 +251,8 @@ export function UsersPage() {
         email: "",
         loginid: "",
         password: "",
-        role: "2",
+        confirmPassword: "",
+        role: String(UserRole.GENERAL_USER),
       });
       setOpen(false);
       setEditingUserId(null);
@@ -276,7 +336,8 @@ export function UsersPage() {
       email: "",
       loginid: "",
       password: "",
-      role: "2",
+      confirmPassword: "",
+      role: String(UserRole.GENERAL_USER),
     });
     setOpen(true);
   };
@@ -288,6 +349,7 @@ export function UsersPage() {
       email: user.email,
       loginid: user.loginid,
       password: "",
+      confirmPassword: "",
       role: String(user.role) as "1" | "2",
     });
     setOpen(true);
@@ -308,10 +370,6 @@ export function UsersPage() {
     });
   };
 
-  const users = useMemo(() => usersQuery.data?.data ?? [], [usersQuery.data]);
-  const total = usersQuery.data?.meta.total ?? 0;
-  const totalPages = Math.max(1, Math.ceil(total / perPage));
-
   const isPending = createMutation.isPending || updateMutation.isPending;
   const isPermissionPending = permissionMutation.isPending;
 
@@ -319,7 +377,12 @@ export function UsersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">ユーザー</h1>
+          <h1 className="text-2xl font-semibold flex items-center gap-2">
+            ユーザー
+            {isFetching && (
+              <Spinner className="h-4 w-4 text-muted-foreground" />
+            )}
+          </h1>
           <p className="text-sm text-muted-foreground">
             チームメンバーとアカウント権限をここで管理します。
           </p>
@@ -332,54 +395,46 @@ export function UsersPage() {
             </Button>
           </DrawerTrigger>
           <DrawerContent className="h-[93vh]">
-            <div className="mx-auto w-full max-w-2xl h-full overflow-y-auto">
+            <div className="mx-auto w-full max-w-2xl h-full overflow-y-auto pb-4">
               <DrawerHeader>
-                <DrawerTitle>{isEditMode ? "ユーザー編集" : "新規ユーザー追加"}</DrawerTitle>
+                <DrawerTitle>
+                  {isEditMode ? "ユーザー編集" : "新規ユーザー追加"}
+                </DrawerTitle>
                 <DrawerDescription>
                   {isEditMode
                     ? "ユーザー情報を編集してください。"
                     : "新しいユーザーの情報を入力してください。"}
                 </DrawerDescription>
               </DrawerHeader>
-              <form className="p-4 pb-0" onSubmit={form.handleSubmit(handleSubmit)}>
-                <div className="grid gap-4 md:grid-cols-2">
+              <form className="p-4" onSubmit={form.handleSubmit(handleSubmit)}>
+                <div className="grid gap-4 md:grid-cols-2 pb-4">
                   <div className="space-y-2">
                     <Label htmlFor="username">氏名</Label>
                     <Input id="username" {...form.register("username")} />
-                    {form.formState.errors.username && (
-                      <p className="text-xs text-destructive">
-                        {form.formState.errors.username.message}
-                      </p>
-                    )}
+                    <p className="text-xs h-4 text-destructive">
+                      {form.formState.errors.username &&
+                        form.formState.errors.username.message}
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="email">メール</Label>
-                    <Input id="email" type="email" {...form.register("email")} />
-                    {form.formState.errors.email && (
-                      <p className="text-xs text-destructive">
-                        {form.formState.errors.email.message}
-                      </p>
-                    )}
+                    <Input
+                      id="email"
+                      type="email"
+                      {...form.register("email")}
+                    />
+                    <p className="text-xs h-4 text-destructive">
+                      {form.formState.errors.email &&
+                        form.formState.errors.email.message}
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="loginid">ログインID</Label>
                     <Input id="loginid" {...form.register("loginid")} />
-                    {form.formState.errors.loginid && (
-                      <p className="text-xs text-destructive">
-                        {form.formState.errors.loginid.message}
-                      </p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="password">
-                      パスワード{isEditMode && <span className="text-muted-foreground"> (変更する場合のみ)</span>}
-                    </Label>
-                    <Input id="password" type="password" {...form.register("password")} />
-                    {form.formState.errors.password && (
-                      <p className="text-xs text-destructive">
-                        {form.formState.errors.password.message}
-                      </p>
-                    )}
+                    <p className="text-xs h-4 text-destructive">
+                      {form.formState.errors.loginid &&
+                        form.formState.errors.loginid.message}
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label>権限</Label>
@@ -387,13 +442,23 @@ export function UsersPage() {
                       control={form.control}
                       name="role"
                       render={({ field }) => (
-                        <Select value={field.value} onValueChange={field.onChange}>
+                        <Select
+                          value={field.value}
+                          onValueChange={field.onChange}
+                        >
                           <SelectTrigger>
                             <SelectValue placeholder="選択してください" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="1">1 - システム管理者</SelectItem>
-                            <SelectItem value="2">2 - 一般ユーザー</SelectItem>
+                            {USER_ROLE_OPTIONS.map((option) => (
+                              <SelectItem
+                                className="cursor-pointer"
+                                key={option.value}
+                                value={option.value}
+                              >
+                                {option.label}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       )}
@@ -404,8 +469,48 @@ export function UsersPage() {
                       </p>
                     )}
                   </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="password">
+                      パスワード
+                      {isEditMode && (
+                        <span className="text-muted-foreground">
+                          {" "}
+                          (変更する場合のみ)
+                        </span>
+                      )}
+                    </Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      {...form.register("password")}
+                    />
+                    <p className="text-xs h-4 text-destructive">
+                      {form.formState.errors.password &&
+                        form.formState.errors.password.message}
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="confirmPassword">
+                      パスワード（確認）
+                      {isEditMode && (
+                        <span className="text-muted-foreground">
+                          {" "}
+                          (変更する場合のみ)
+                        </span>
+                      )}
+                    </Label>
+                    <Input
+                      id="confirmPassword"
+                      type="password"
+                      {...form.register("confirmPassword")}
+                    />
+                    <p className="text-xs h-4 text-destructive">
+                      {form.formState.errors.confirmPassword &&
+                        form.formState.errors.confirmPassword.message}
+                    </p>
+                  </div>
                 </div>
-                <DrawerFooter>
+                <DrawerFooter className="p-0">
                   <Button type="submit" disabled={isPending}>
                     {isPending && <Spinner className="mr-2 h-4 w-4" />}
                     {isEditMode ? "更新" : "追加"}
@@ -434,7 +539,8 @@ export function UsersPage() {
               <DrawerHeader>
                 <DrawerTitle>ページ権限</DrawerTitle>
                 <DrawerDescription>
-                  {permissionUser?.username ?? "ユーザー"}が表示できるページを選択してください。
+                  {permissionUser?.username ?? "ユーザー"}
+                  が表示できるページを選択してください。
                 </DrawerDescription>
               </DrawerHeader>
               <div className="flex-1 space-y-3 px-4">
@@ -474,9 +580,64 @@ export function UsersPage() {
       </div>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-lg">全ユーザー ({usersQuery.data?.meta.total ?? 0})</CardTitle>
+        <CardHeader>
+          <div className="flex flex-col gap-4">
+            <CardTitle className="text-lg">ユーザー一覧</CardTitle>
+            <div className="flex items-center justify-between">
+              <Tabs
+                value={selectedRole}
+                onValueChange={(val) => {
+                  setSelectedRole(val);
+                  setCurrentPage(1);
+                }}
+              >
+                <TabsList>
+                  <TabsTrigger value="all">
+                    全ユーザー
+                    <Badge variant="secondary" className="ml-2">
+                      {allCount}
+                    </Badge>
+                  </TabsTrigger>
+                  {USER_ROLE_OPTIONS.map((option) => (
+                    <TabsTrigger key={option.value} value={option.value}>
+                      {option.label}
+                      <Badge variant="secondary" className="ml-2">
+                        {getRoleCount(Number(option.value))}
+                      </Badge>
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setCurrentPage((page) => Math.max(1, page - 1))
+                    }
+                    disabled={currentPage === 1}
+                  >
+                    前へ
+                  </Button>
+                  <span className="text-muted-foreground text-sm">
+                    {currentPage} / {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setCurrentPage((page) => Math.min(totalPages, page + 1))
+                    }
+                    disabled={currentPage === totalPages}
+                  >
+                    次へ
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -492,49 +653,76 @@ export function UsersPage() {
                 <TableHead className="w-[50px]"></TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
-              {users.map((user) => (
-                <TableRow key={user.id}>
-                  <TableCell className="font-medium">{user.username}</TableCell>
-                  <TableCell>{user.email}</TableCell>
-                  <TableCell>{user.loginid}</TableCell>
-                  <TableCell>{user.role === 1 ? "システム管理者" : "一般ユーザー"}</TableCell>
-                  <TableCell>{formatDate(user.created_at)}</TableCell>
-                  <TableCell>{formatDate(user.updated_at)}</TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0">
-                          <span className="sr-only">メニューを開く</span>
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleEdit(user)}>
-                          <Edit className="mr-2 h-4 w-4" />
-                          <span>編集</span>
-                        </DropdownMenuItem>
-                        {isAdmin && (
-                          <DropdownMenuItem onClick={() => handleEditPermissions(user)}>
-                            <Shield className="mr-2 h-4 w-4" />
-                            <span>ページ権限</span>
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={() => {
-                            setDeletingUserId(user.id);
-                            setDeleteConfirmationOpen(true);
-                          }}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          <span>削除</span>
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+            <TableBody
+              className={
+                isFetching
+                  ? "opacity-50 transition-opacity"
+                  : "transition-opacity"
+              }
+            >
+              {users.length === 0 && !usersQuery.isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="h-[200px]">
+                    <div className="flex flex-col items-center justify-center gap-4 text-muted-foreground">
+                      <AppLogoIcon className="h-24 w-24 opacity-20" />
+                      <p>ユーザー登録がありません</p>
+                    </div>
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                users.map((user) => (
+                  <TableRow key={user.id}>
+                    <TableCell className="font-medium">
+                      {user.username}
+                    </TableCell>
+                    <TableCell>{user.email}</TableCell>
+                    <TableCell>{user.loginid}</TableCell>
+                    <TableCell>
+                      {USER_ROLE_LABELS[user.role as UserRoleId] ?? "不明"}
+                    </TableCell>
+                    <TableCell>{formatDate(user.created_at)}</TableCell>
+                    <TableCell>{formatDate(user.updated_at)}</TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="h-8 w-8 p-0">
+                            <span className="sr-only">メニューを開く</span>
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            className="cursor-pointer"
+                            onClick={() => handleEdit(user)}
+                          >
+                            <Edit className="mr-2 h-4 w-4" />
+                            <span>編集</span>
+                          </DropdownMenuItem>
+                          {isAdmin && (
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              onClick={() => handleEditPermissions(user)}
+                            >
+                              <Shield className="mr-2 h-4 w-4" />
+                              <span>ページ権限</span>
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem
+                            className="cursor-pointer text-destructive"
+                            onClick={() => {
+                              setDeletingUserId(user.id);
+                              setDeleteConfirmationOpen(true);
+                            }}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            <span>削除</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
 
@@ -543,51 +731,25 @@ export function UsersPage() {
               <Spinner className="h-6 w-6 text-muted-foreground" />
             </div>
           )}
-
-          {!usersQuery.isLoading && totalPages > 1 && (
-            <div className="flex items-center justify-between pt-4 text-sm">
-              <div className="text-muted-foreground">
-                {total} 件中 {Math.min((currentPage - 1) * perPage + 1, total)}-
-                {Math.min(currentPage * perPage, total)} 件
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                  disabled={currentPage === 1}
-                >
-                  前へ
-                </Button>
-                <span className="text-muted-foreground">
-                  {currentPage} / {totalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    setCurrentPage((page) => Math.min(totalPages, page + 1))
-                  }
-                  disabled={currentPage === totalPages}
-                >
-                  次へ
-                </Button>
-              </div>
-            </div>
-          )}
         </CardContent>
-      </Card >
+      </Card>
 
-      <AlertDialog open={deleteConfirmationOpen} onOpenChange={setDeleteConfirmationOpen}>
+      <AlertDialog
+        open={deleteConfirmationOpen}
+        onOpenChange={setDeleteConfirmationOpen}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>本当に削除しますか？</AlertDialogTitle>
             <AlertDialogDescription>
-              この操作は取り消せません。<br></br>このユーザーアカウントは完全に削除されます。
+              この操作は取り消せません。<br></br>
+              このユーザーアカウントは完全に削除されます。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDeletingUserId(null)}>キャンセル</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setDeletingUserId(null)}>
+              キャンセル
+            </AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => {
@@ -602,6 +764,6 @@ export function UsersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div >
+    </div>
   );
 }

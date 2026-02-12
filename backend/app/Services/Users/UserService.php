@@ -18,10 +18,13 @@ class UserService
         $perPage = min(max($perPage, 1), 100);
 
         $paginator = User::query()
+            ->when($request->query('role'), fn($q, $role) => $q->where('role', $role))
             ->orderBy('role')
             ->orderByDesc('created_at')
             ->paginate($perPage);
 
+        $roleCounts = $this->getRoleCounts();
+        
         return response()->json([
             'success' => true,
             'data' => collect($paginator->items())->map(fn(User $user) => $this->userPayload($user)),
@@ -29,9 +32,31 @@ class UserService
                 'page' => $paginator->currentPage(),
                 'per_page' => $paginator->perPage(),
                 'total' => $paginator->total(),
+                'roles' => $roleCounts,
             ],
             'message' => '',
         ]);
+    }
+
+    private function getRoleCounts(): array
+    {
+        $roleCounts = User::query()
+            ->selectRaw('role, count(*) as count')
+            ->groupBy('role')
+            ->pluck('count', 'role')
+            ->all();
+
+        $perRoles = [];
+
+        // Return valid counts from DB irrespective of Role ID
+        foreach ($roleCounts as $roleId => $count) {
+            $perRoles[] = [
+                'id' => $roleId,
+                'count' => $count,
+            ];
+        }
+
+        return $perRoles;
     }
 
     public function selection(): JsonResponse
