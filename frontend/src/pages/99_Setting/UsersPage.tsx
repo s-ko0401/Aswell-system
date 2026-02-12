@@ -1,7 +1,7 @@
 ﻿import { useState } from "react";
 import { AxiosError } from "axios";
 import { type ApiErrorResponse } from "@/types/api";
-import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -44,8 +44,8 @@ export function UsersPage() {
 
   const isAdmin = currentUser?.role === UserRole.SYSTEM_ADMIN;
 
-  const usersQuery = useQuery({
-    queryKey: ["users", currentPage, selectedRole, debouncedSearchQuery],
+  const usersQuery = useQuery<UsersResponse, Error>({
+    queryKey: ["users", currentPage],
     queryFn: async () => {
       const { data } = await api.get("/users", {
         params: {
@@ -60,7 +60,6 @@ export function UsersPage() {
         meta: data.meta as UsersResponse["meta"],
       } satisfies UsersResponse;
     },
-    placeholderData: keepPreviousData,
   });
 
   const users = usersQuery.data?.data ?? [];
